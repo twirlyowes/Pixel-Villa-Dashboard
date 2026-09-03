@@ -1,23 +1,93 @@
 "use client";
 
+import { useState } from "react";
 import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
+  const [username, setUsername] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+
+    setLoading(true);
+    setError("");
+
+    const result = await signIn("credentials", {
+      username,
+      accessCode,
+      redirect: false,
+      callbackUrl: "/",
+    });
+
+    if (result?.error) {
+      setError("Invalid username or access code.");
+      setLoading(false);
+      return;
+    }
+
+    window.location.href = "/";
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg">
-      <div className="bg-panel border border-border rounded-xl p-8 w-80 text-center">
-        <h1 className="text-lg font-medium mb-2">Pixel Villa Dashboard</h1>
-        <p className="text-sm text-gray-400 mb-6">
-          Staff sign-in only. You need an active staff role in the Discord
-          server to get in.
+    <main className="min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/20 p-8 shadow-xl">
+        <h1 className="text-3xl font-bold text-white">
+          Pixel Villa Dashboard
+        </h1>
+
+        <p className="mt-2 text-gray-400">
+          Enter your staff username and access code.
         </p>
-        <button
-          onClick={() => signIn("discord", { callbackUrl: "/" })}
-          className="w-full bg-accent text-white rounded-lg py-2 text-sm font-medium"
-        >
-          Sign in with Discord
-        </button>
+
+        <form onSubmit={handleLogin} className="mt-6 space-y-4">
+          <div>
+            <label className="mb-2 block text-sm text-gray-300">
+              Username
+            </label>
+
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter your username"
+              required
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-gray-300">
+              Access Code
+            </label>
+
+            <input
+              type="password"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              placeholder="Enter access code"
+              required
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-400">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-purple-600 py-3 font-semibold text-white transition hover:bg-purple-500 disabled:opacity-50"
+          >
+            {loading ? "Signing in..." : "Access Dashboard"}
+          </button>
+        </form>
       </div>
-    </div>
+    </main>
   );
 }
