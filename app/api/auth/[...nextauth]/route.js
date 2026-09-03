@@ -1,33 +1,48 @@
 import NextAuth from "next-auth";
-import DiscordProvider from "next-auth/providers/discord";
-import { isStaff } from "@/lib/discord";
+import CredentialsProvider from "next-auth/providers/credentials";
 
 const handler = NextAuth({
   providers: [
-    DiscordProvider({
-      clientId: process.env.DISCORD_CLIENT_ID,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET,
+    CredentialsProvider({
+      name: "Access Code",
+
+      credentials: {
+        username: {
+          label: "Username",
+          type: "text",
+          placeholder: "Enter your username",
+        },
+        accessCode: {
+          label: "Access Code",
+          type: "password",
+          placeholder: "Enter access code",
+        },
+      },
+
+      async authorize(credentials) {
+        const ACCESS_CODE = process.env.DASHBOARD_ACCESS_CODE;
+
+        if (
+          credentials?.username &&
+          credentials?.accessCode === ACCESS_CODE
+        ) {
+          return {
+            id: credentials.username,
+            name: credentials.username,
+          };
+        }
+
+        return null;
+      },
     }),
   ],
-  callbacks: {
-    // Runs on every sign-in attempt — block non-staff here
-    async signIn({ user }) {
-      const allowed = await isStaff(user.id);
-      return allowed; // false = NextAuth shows an "access denied" page
-    },
-    // Persist the Discord user id onto the session so pages/APIs can use it
-    async jwt({ token, user }) {
-      if (user) token.discordId = user.id;
-      return token;
-    },
-    async session({ session, token }) {
-      session.user.discordId = token.discordId;
-      return session;
-    },
+
+  session: {
+    strategy: "jwt",
   },
+
   pages: {
     signIn: "/login",
-    error: "/login",
   },
 });
 
