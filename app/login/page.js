@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
-  const [userId, setUserId] = useState("");
+  const [username, setUsername] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,14 +16,14 @@ export default function LoginPage() {
     setError("");
 
     const result = await signIn("credentials", {
-      userId,
+      username,
       accessCode,
       redirect: false,
       callbackUrl: "/",
     });
 
     if (result?.error) {
-      setError("Invalid Discord User ID or access code.");
+      setError("Invalid username or access code.");
       setLoading(false);
       return;
     }
@@ -39,21 +39,25 @@ export default function LoginPage() {
         </h1>
 
         <p className="mt-2 text-gray-400">
-          Enter your Discord User ID and access code.
+          Enter your Discord username and access code.
         </p>
 
-        <form onSubmit={handleLogin} className="mt-6 space-y-4">
+        <form
+          onSubmit={handleLogin}
+          className="mt-6 space-y-4"
+        >
           <div>
             <label className="mb-2 block text-sm text-gray-300">
-              Discord User ID
+              Discord Username
             </label>
 
             <input
               type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              placeholder="e.g. 123456789012345678"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. twirlyowes"
               required
+              autoComplete="username"
               className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
             />
           </div>
@@ -69,6 +73,7 @@ export default function LoginPage() {
               onChange={(e) => setAccessCode(e.target.value)}
               placeholder="Enter access code"
               required
+              autoComplete="current-password"
               className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
             />
           </div>
