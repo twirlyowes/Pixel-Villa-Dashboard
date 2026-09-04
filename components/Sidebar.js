@@ -2,55 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 
 const mainLinks = [
-  {
-    href: "/",
-    label: "Overview",
-    icon: "⌂",
-  },
-  {
-    href: "/staff-activity",
-    label: "Staff Activity",
-    icon: "◉",
-  },
-  {
-    href: "/warnings",
-    label: "Warnings",
-    icon: "⚠",
-  },
-  {
-    href: "/afk",
-    label: "AFK",
-    icon: "◌",
-  },
+  { href: "/", label: "Overview", icon: "⌂" },
+  { href: "/staff-activity", label: "Staff Activity", icon: "◉" },
+  { href: "/warnings", label: "Warnings", icon: "⚠" },
+  { href: "/afk", label: "AFK", icon: "◌" },
 ];
 
 const adminLinks = [
-  {
-    href: "/moderation",
-    label: "Moderation",
-    icon: "◆",
-  },
-  {
-    href: "/hqc",
-    label: "High Quality Commands",
-    icon: "✦",
-  },
+  { href: "/moderation", label: "Moderation", icon: "◆" },
+  { href: "/hqc", label: "High Quality Commands", icon: "✦" },
 ];
 
 const systemLinks = [
-  {
-    href: "/bot-health",
-    label: "Bot Health",
-    icon: "●",
-  },
-  {
-    href: "/security",
-    label: "Verification & Automod",
-    icon: "◇",
-  },
+  { href: "/bot-health", label: "Bot Health", icon: "●" },
+  { href: "/security", label: "Verification & Automod", icon: "◇" },
 ];
 
 function NavLink({ href, label, icon, pathname }) {
@@ -137,6 +105,38 @@ export default function Sidebar() {
           pathname={pathname}
         />
       ))}
+
+      {/* Sign Out */}
+      <button
+        type="button"
+        onClick={() =>
+          signOut({
+            callbackUrl: "/login",
+          })
+        }
+        className="sidebar-link"
+        style={{
+          width: "100%",
+          border: "none",
+          cursor: "pointer",
+          background: "transparent",
+          marginTop: 8,
+          textAlign: "left",
+        }}
+      >
+        <span
+          style={{
+            width: 22,
+            textAlign: "center",
+            fontSize: 14,
+            opacity: 0.7,
+          }}
+        >
+          ↪
+        </span>
+
+        <span>Sign Out</span>
+      </button>
 
       <div
         style={{
