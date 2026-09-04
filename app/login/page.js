@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("");
+  const [userId, setUserId] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,14 +16,14 @@ export default function LoginPage() {
     setError("");
 
     const result = await signIn("credentials", {
-      username,
+      userId,
       accessCode,
       redirect: false,
       callbackUrl: "/",
     });
 
     if (result?.error) {
-      setError("Invalid username or access code.");
+      setError("Invalid Discord User ID or access code.");
       setLoading(false);
       return;
     }
@@ -39,20 +39,20 @@ export default function LoginPage() {
         </h1>
 
         <p className="mt-2 text-gray-400">
-          Enter your staff username and access code.
+          Enter your Discord User ID and access code.
         </p>
 
         <form onSubmit={handleLogin} className="mt-6 space-y-4">
           <div>
             <label className="mb-2 block text-sm text-gray-300">
-              Username
+              Discord User ID
             </label>
 
             <input
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              placeholder="e.g. 123456789012345678"
               required
               className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
             />
