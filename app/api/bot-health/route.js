@@ -15,61 +15,27 @@ export async function GET() {
       );
     }
 
-    const botUrl = process.env.BOT_HEALTH_URL;
-
-    if (!botUrl) {
-      return NextResponse.json({
-        success: true,
-        online: false,
-        status: "unconfigured",
-        message:
-          "BOT_HEALTH_URL is not configured.",
-      });
-    }
-
-    const startedAt = Date.now();
-
-    const response = await fetch(botUrl, {
-      method: "GET",
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    });
-
-    const latency = Date.now() - startedAt;
-
-    let data = {};
-
-    try {
-      data = await response.json();
-    } catch {
-      data = {};
-    }
-
-    if (!response.ok) {
-      return NextResponse.json({
-        success: true,
-        online: false,
-        status: "offline",
-        latency,
-        ...data,
-      });
-    }
+    /*
+     * The dashboard does not use BOT_HEALTH_URL.
+     * Bot online status cannot be reliably determined
+     * from the dashboard without a health endpoint.
+     */
 
     return NextResponse.json({
       success: true,
-      online: true,
-      status: "online",
-      latency,
-      ...data,
+      configured: false,
+      online: null,
+      status: "not_configured",
+      message: "Bot health monitoring is not configured.",
     });
   } catch (error) {
     console.error("BOT HEALTH API ERROR:", error);
 
-    return NextResponse.json({
-      success: true,
-      online: false,
-      status: "offline",
-      message: "Bot health endpoint could not be reached.",
-    });
+    return NextResponse.json(
+      {
+        error: "Failed to load bot health.",
+      },
+      { status: 500 }
+    );
   }
 }
