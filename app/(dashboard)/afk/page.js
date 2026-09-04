@@ -1,248 +1,301 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
-function formatDate(value) {
-  if (!value) return "Unknown";
+function formatDate(date) {
+  if (!date) return "Unknown";
 
-  const date = new Date(value);
+  const parsed = new Date(date);
 
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Unknown";
   }
 
-  return date.toLocaleString();
+  return parsed.toLocaleString();
 }
 
-function getUsername(user) {
-  return (
-    user.username ||
-    user.name ||
-    user.tag ||
-    user.userId ||
-    user.discordId ||
-    "Unknown User"
+function formatDuration(date) {
+  if (!date) return "Unknown";
+
+  const start = new Date(date).getTime();
+
+  if (Number.isNaN(start)) {
+    return "Unknown";
+  }
+
+  const diff = Math.max(
+    0,
+    Date.now() - start
   );
+
+  const minutes = Math.floor(diff / 60000);
+
+  if (minutes < 1) {
+    return "Less than a minute";
+  }
+
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours < 24) {
+    return `${hours}h ${remainingMinutes}m`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+
+  return `${days}d ${remainingHours}h`;
 }
 
-function getUserId(user) {
-  return user.userId || user.discordId || user.id || "";
-}
+export default function AfkPage() {
+  const { data: session, status } = useSession();
 
-export default function AFKPage() {
-  const [users, setUsers] = useState([]);
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [users, setUsers] = useState([]);
+  const [myStatus, setMyStatus] = useState(null);
+  const [message, setMessage] = useState("");
 
-  async function loadAFK() {
+  const isAdmin = session?.user?.isAdmin === true;
+
+  async function loadAfk() {
+    setLoading(true);
+    setMessage("");
+
     try {
-      setLoading(true);
-      setError("");
-
-      const response = await fetch("/api/afk", {
+      const res = await fetch("/api/afk", {
         cache: "no-store",
       });
 
-      const result = await response.json();
+      const data = await res.json();
 
-      if (!response.ok) {
-        throw new Error(result?.error || "Failed to load AFK users.");
+      if (!res.ok) {
+        throw new Error(
+          data?.error || "Failed to load AFK status."
+        );
       }
 
-      const list =
-        result.users ||
-        result.afk ||
-        result.data ||
-        [];
-
-      setUsers(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setError(err.message || "Failed to load AFK users.");
+      if (isAdmin) {
+        setUsers(
+          Array.isArray(data.users)
+            ? data.users
+            : []
+        );
+      } else {
+        setMyStatus(
+          data.isAfk
+            ? {
+                userId: data.userId,
+                reason: data.reason,
+                since: data.since,
+              }
+            : null
+        );
+      }
+    } catch (error) {
+      setUsers([]);
+      setMyStatus(null);
+      setMessage(
+        error.message ||
+          "Failed to load AFK status."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadAFK();
-  }, []);
+    if (status !== "authenticated") return;
 
-  const filteredUsers = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    loadAfk();
 
-    if (!query) return users;
+    const interval = setInterval(() => {
+      loadAfk();
+    }, 30000);
 
-    return users.filter((user) => {
-      const username = getUsername(user).toLowerCase();
-      const userId = getUserId(user).toLowerCase();
-      const reason = String(user.reason || "").toLowerCase();
+    return () => clearInterval(interval);
+  }, [status, isAdmin]);
 
-      return (
-        username.includes(query) ||
-        userId.includes(query) ||
-        reason.includes(query)
-      );
-    });
-  }, [users, search]);
+  if (status === "loading" || loading) {
+    return (
+      <div className="glass-page">
+        <div className="glass-card">
+          <p className="text-white/60">
+            Loading AFK status...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="page-container">
+    <div className="glass-page">
       <div className="page-header">
         <div>
-          <div className="status-pill">
-            <span className="status-dot" />
-            AFK Management
-          </div>
+          <p className="page-eyebrow">
+            STAFF STATUS
+          </p>
 
           <h1 className="page-title">
-            AFK <span className="gradient-text">Users</span>
+            AFK
           </h1>
 
-          <p className="page-subtitle">
-            View members who are currently marked as AFK.
+          <p className="page-description">
+            {isAdmin
+              ? "View staff members who are currently AFK."
+              : "View your current AFK status."}
           </p>
         </div>
 
-        <button
-          type="button"
-          className="glass-button"
-          onClick={loadAFK}
-          disabled={loading}
-        >
-          {loading ? "Refreshing..." : "↻ Refresh"}
-        </button>
+        {isAdmin && (
+          <div className="stat-card">
+            <span className="stat-label">
+              CURRENTLY AFK
+            </span>
+
+            <span className="stat-value">
+              {users.length}
+            </span>
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="glass-panel" style={{ marginBottom: 20 }}>
-          <div style={{ color: "#fca5a5", fontWeight: 600 }}>
-            Unable to load AFK users
-          </div>
-
-          <p className="panel-description">
-            {error}
+      {message && (
+        <div className="glass-card mb-6">
+          <p className="text-sm text-white/70">
+            {message}
           </p>
-
-          <button
-            type="button"
-            className="glass-button"
-            onClick={loadAFK}
-          >
-            Try Again
-          </button>
         </div>
       )}
 
-      <section className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card-label">CURRENTLY AFK</div>
+      {isAdmin ? (
+        users.length === 0 ? (
+          <div className="glass-card text-center">
+            <div className="mb-3 text-4xl">
+              ✓
+            </div>
 
-          <div className="stat-card-value">
-            {loading ? "—" : users.length}
-          </div>
-
-          <div className="stat-card-subtitle">
-            Members currently marked AFK
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card-label">VISIBLE RESULTS</div>
-
-          <div className="stat-card-value">
-            {loading ? "—" : filteredUsers.length}
-          </div>
-
-          <div className="stat-card-subtitle">
-            Matching your search
-          </div>
-        </div>
-      </section>
-
-      <section className="glass-panel">
-        <div className="panel-header">
-          <div>
-            <div className="panel-label">AFK DIRECTORY</div>
-
-            <h2 className="section-title">
-              Current AFK Members
+            <h2 className="text-lg font-semibold text-white">
+              No Staff AFK
             </h2>
-          </div>
 
-          <span className="panel-count">
-            {filteredUsers.length}
-          </span>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <input
-            className="glass-input"
-            type="search"
-            placeholder="Search username, Discord ID or reason..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
-
-        {loading ? (
-          <div className="empty-state">
-            Loading AFK users...
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="empty-state">
-            {search
-              ? "No AFK users match your search."
-              : "No users are currently AFK."}
+            <p className="mt-1 text-sm text-white/50">
+              Nobody is currently marked as AFK.
+            </p>
           </div>
         ) : (
-          <div className="staff-list">
-            {filteredUsers.map((user, index) => (
+          <div className="space-y-4">
+            {users.map((user) => (
               <div
-                key={`${getUserId(user)}-${index}`}
-                className="staff-list-row"
+                key={user.userId}
+                className="glass-card"
               >
-                <div className="staff-list-avatar">
-                  {getUsername(user)
-                    .charAt(0)
-                    .toUpperCase()}
-                </div>
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-lg border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-medium text-yellow-300">
+                        AFK
+                      </span>
 
-                <div className="staff-list-info">
-                  <div className="staff-list-name">
-                    {getUsername(user)}
-                  </div>
-
-                  <div className="staff-list-meta">
-                    {getUserId(user) || "Unknown Discord ID"}
-                  </div>
-
-                  <div
-                    className="panel-description"
-                    style={{
-                      marginTop: 5,
-                      marginBottom: 0,
-                    }}
-                  >
-                    <strong>Reason:</strong>{" "}
-                    {user.reason || "No reason provided"}
-                  </div>
-
-                  {user.time && (
-                    <div className="staff-list-meta">
-                      AFK since: {formatDate(user.time)}
+                      <span className="text-xs text-white/40">
+                        {user.userId}
+                      </span>
                     </div>
-                  )}
-                </div>
 
-                <div className="staff-list-arrow">
-                  ●
+                    <h2 className="text-lg font-semibold text-white">
+                      Staff Member
+                    </h2>
+
+                    <p className="mt-2 text-sm text-white/60">
+                      {user.reason ||
+                        "No reason provided."}
+                    </p>
+                  </div>
+
+                  <div className="text-left md:text-right">
+                    <p className="text-xs uppercase tracking-wider text-white/30">
+                      Since
+                    </p>
+
+                    <p className="mt-1 text-sm text-white/70">
+                      {formatDate(user.since)}
+                    </p>
+
+                    <p className="mt-1 text-xs text-white/40">
+                      {formatDuration(user.since)}
+                    </p>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </section>
+        )
+      ) : (
+        <div className="glass-card">
+          {myStatus ? (
+            <>
+              <div className="mb-3 flex items-center gap-2">
+                <span className="rounded-lg border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-medium text-yellow-300">
+                  AFK
+                </span>
+
+                <span className="text-xs text-white/40">
+                  {myStatus.userId}
+                </span>
+              </div>
+
+              <h2 className="text-lg font-semibold text-white">
+                You are currently AFK
+              </h2>
+
+              <p className="mt-2 text-sm text-white/60">
+                {myStatus.reason ||
+                  "No reason provided."}
+              </p>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-white/30">
+                    Since
+                  </p>
+
+                  <p className="mt-1 text-sm text-white/70">
+                    {formatDate(myStatus.since)}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-white/30">
+                    Duration
+                  </p>
+
+                  <p className="mt-1 text-sm text-white/70">
+                    {formatDuration(myStatus.since)}
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-center">
+              <div className="mb-3 text-4xl">
+                ✓
+              </div>
+
+              <h2 className="text-lg font-semibold text-white">
+                You are not AFK
+              </h2>
+
+              <p className="mt-1 text-sm text-white/50">
+                You currently have no AFK status.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
