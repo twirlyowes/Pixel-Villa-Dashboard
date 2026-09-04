@@ -1,3 +1,4 @@
+
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
@@ -42,8 +43,52 @@ export async function GET(req) {
     const requestedUserId = searchParams.get("userId")?.trim();
 
     /*
-     * Normal staff:
-     * Can ONLY view their own AFK status.
+     * ADMINS:
+     * Return every currently stored AFK user.
+     */
+    if (isAdmin && !requestedUserId) {
+      const snapshot = await db.collection("afk").get();
+
+      const users = snapshot.docs
+        .map((doc) => {
+          const data = doc.data();
+
+          return {
+            userId: doc.id,
+            reason: data.reason || "No reason provided.",
+            since: serializeDate(data.time),
+          };
+        })
+        .filter((user) => {
+          if (STAFF_USER_IDS.length === 0) {
+            return true;
+          }
+
+          return STAFF_USER_IDS.includes(user.userId);
+        });
+
+      users.sort((a, b) => {
+        const aTime = a.since
+          ? new Date(a.since).getTime()
+          : 0;
+
+        const bTime = b.since
+          ? new Date(b.since).getTime()
+          : 0;
+
+        return aTime - bTime;
+      });
+
+      return NextResponse.json({
+        success: true,
+        isAdmin: true,
+        users,
+        count: users.length,
+      });
+    }
+
+    /*
+     * ADMIN CHECKING A SPECIFIC USER
      */
     const userId = isAdmin
       ? requestedUserId || sessionUserId
@@ -57,8 +102,8 @@ export async function GET(req) {
     }
 
     /*
-     * Admins can check any user.
-     * Normal staff can only check themselves.
+     * NORMAL STAFF:
+     * Can ONLY view themselves.
      */
     if (!isAdmin && userId !== sessionUserId) {
       return NextResponse.json(
@@ -67,10 +112,6 @@ export async function GET(req) {
       );
     }
 
-    /*
-     * If STAFF_USER_IDS exists, make sure normal staff
-     * are actually part of the configured staff list.
-     */
     if (
       !isAdmin &&
       STAFF_USER_IDS.length > 0 &&
@@ -82,15 +123,21 @@ export async function GET(req) {
       );
     }
 
-    const doc = await db.collection("afk").doc(userId).get();
+    const doc = await db
+      .collection("afk")
+      .doc(userId)
+      .get();
 
     if (!doc.exists) {
       return NextResponse.json({
         success: true,
+        isAdmin,
         isAfk: false,
         userId,
         reason: null,
         since: null,
+        users: [],
+        count: 0,
       });
     }
 
@@ -98,10 +145,13 @@ export async function GET(req) {
 
     return NextResponse.json({
       success: true,
+      isAdmin,
       isAfk: true,
       userId,
       reason: data.reason || "No reason provided.",
       since: serializeDate(data.time),
+      users: [],
+      count: 1,
     });
   } catch (error) {
     console.error("AFK API ERROR:", error);
