@@ -1,349 +1,290 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 export default function ModerationPage() {
-  const [members, setMembers] = useState([]);
-  const [search, setSearch] = useState("");
-  const [selectedMember, setSelectedMember] = useState(null);
+  const { data: session, status } = useSession();
+
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function loadMembers() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const response = await fetch("/api/moderation", {
-        cache: "no-store",
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          result?.error || "Failed to load moderation data."
-        );
-      }
-
-      const list =
-        result.members ||
-        result.users ||
-        result.data ||
-        [];
-
-      setMembers(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setError(
-        err.message || "Failed to load moderation data."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const isAdmin = session?.user?.isAdmin === true;
 
   useEffect(() => {
-    loadMembers();
-  }, []);
+    if (status !== "authenticated") return;
 
-  const filteredMembers = members.filter((member) => {
-    const query = search.trim().toLowerCase();
+    if (!isAdmin) {
+      setLoading(false);
+      return;
+    }
 
-    if (!query) return true;
+    async function loadModeration() {
+      try {
+        setLoading(true);
+        setError("");
 
-    const username = String(
-      member.username ||
-        member.name ||
-        member.tag ||
-        ""
-    ).toLowerCase();
+        const response = await fetch(
+          "/api/moderation",
+          {
+            cache: "no-store",
+          }
+        );
 
-    const id = String(
-      member.userId ||
-        member.discordId ||
-        member.id ||
-        ""
-    ).toLowerCase();
+        const result = await response.json();
 
+        if (!response.ok) {
+          throw new Error(
+            result.error ||
+              "Failed to load moderation data."
+          );
+        }
+
+        setData(result);
+      } catch (err) {
+        console.error(err);
+        setError(
+          err.message ||
+            "Failed to load moderation data."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadModeration();
+  }, [status, isAdmin]);
+
+  if (status === "loading" || loading) {
     return (
-      username.includes(query) ||
-      id.includes(query)
-    );
-  });
+      <div>
+        <div className="page-header">
+          <div>
+            <div className="page-kicker">
+              Administration
+            </div>
+            <h1 className="page-title">
+              Moderation
+            </h1>
+            <p className="page-description">
+              Loading moderation systems...
+            </p>
+          </div>
+        </div>
 
-  function getName(member) {
-    return (
-      member.username ||
-      member.name ||
-      member.tag ||
-      member.userId ||
-      member.discordId ||
-      "Unknown User"
+        <div className="glass-card">
+          Loading...
+        </div>
+      </div>
     );
   }
 
-  function getId(member) {
+  if (!session) {
     return (
-      member.userId ||
-      member.discordId ||
-      member.id ||
-      ""
+      <div className="glass-card">
+        You must be signed in.
+      </div>
     );
   }
+
+  if (!isAdmin) {
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <div className="page-kicker">
+              Administration
+            </div>
+
+            <h1 className="page-title">
+              Moderation
+            </h1>
+
+            <p className="page-description">
+              Administrative moderation controls.
+            </p>
+          </div>
+        </div>
+
+        <div className="glass-card">
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              🔒
+            </div>
+
+            <h2>
+              Administrator access required
+            </h2>
+
+            <p>
+              You do not have permission to
+              access moderation controls.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const actions = Array.isArray(data?.actions)
+    ? data.actions
+    : [];
 
   return (
-    <div className="page-container">
+    <div>
       <div className="page-header">
         <div>
-          <div className="status-pill">
-            <span className="status-dot" />
+          <div className="page-kicker">
             Administration
           </div>
 
           <h1 className="page-title">
-            <span className="gradient-text">Moderation</span>
+            Moderation
           </h1>
 
-          <p className="page-subtitle">
-            Manage moderation information and member actions.
+          <p className="page-description">
+            Pixel Villa moderation systems and
+            available actions.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="glass-button"
-          onClick={loadMembers}
-          disabled={loading}
-        >
-          {loading ? "Refreshing..." : "↻ Refresh"}
-        </button>
+        <div className="glass-badge">
+          ADMIN
+        </div>
       </div>
 
       {error && (
-        <div
-          className="glass-panel"
-          style={{ marginBottom: 20 }}
-        >
-          <div
-            style={{
-              color: "#fca5a5",
-              fontWeight: 600,
-            }}
-          >
-            Unable to load moderation data
-          </div>
-
-          <p className="panel-description">
+        <div className="glass-card">
+          <div className="error-state">
             {error}
-          </p>
-
-          <button
-            type="button"
-            className="glass-button"
-            onClick={loadMembers}
-          >
-            Try Again
-          </button>
+          </div>
         </div>
       )}
 
-      <section className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card-label">
-            MEMBERS
+      <div className="stats-grid">
+        <div className="glass-card stat-card">
+          <div className="stat-label">
+            Available Actions
           </div>
 
-          <div className="stat-card-value">
-            {loading ? "—" : members.length}
+          <div className="stat-value">
+            {actions.length}
           </div>
 
-          <div className="stat-card-subtitle">
-            Members returned by moderation API
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card-label">
-            SEARCH RESULTS
-          </div>
-
-          <div className="stat-card-value">
-            {loading ? "—" : filteredMembers.length}
-          </div>
-
-          <div className="stat-card-subtitle">
-            Members matching your search
+          <div className="stat-subtitle">
+            Moderation systems
           </div>
         </div>
-      </section>
 
-      <section className="glass-panel">
-        <div className="panel-header">
-          <div>
-            <div className="panel-label">
-              MODERATION
+        <div className="glass-card stat-card">
+          <div className="stat-label">
+            Access
+          </div>
+
+          <div className="stat-value">
+            Admin
+          </div>
+
+          <div className="stat-subtitle">
+            Restricted dashboard area
+          </div>
+        </div>
+      </div>
+
+      <div className="section-heading">
+        <div>
+          <h2>Moderation Actions</h2>
+          <p>
+            Actions available through the
+            Pixel Villa Support bot.
+          </p>
+        </div>
+      </div>
+
+      {actions.length === 0 ? (
+        <div className="glass-card">
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              ◆
             </div>
 
-            <h2 className="section-title">
-              Member Management
+            <h2>
+              No moderation actions found
             </h2>
-          </div>
 
-          <span className="panel-count">
-            {filteredMembers.length}
-          </span>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <input
-            className="glass-input"
-            type="search"
-            placeholder="Search username or Discord ID..."
-            value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
-          />
-        </div>
-
-        {loading ? (
-          <div className="empty-state">
-            Loading members...
-          </div>
-        ) : filteredMembers.length === 0 ? (
-          <div className="empty-state">
-            {search
-              ? "No members match your search."
-              : "No member data available."}
-          </div>
-        ) : (
-          <div className="staff-list">
-            {filteredMembers.map((member, index) => (
-              <button
-                type="button"
-                key={`${getId(member)}-${index}`}
-                className="staff-list-row"
-                onClick={() =>
-                  setSelectedMember(member)
-                }
-              >
-                <div className="staff-list-avatar">
-                  {getName(member)
-                    .charAt(0)
-                    .toUpperCase()}
-                </div>
-
-                <div className="staff-list-info">
-                  <div className="staff-list-name">
-                    {getName(member)}
-                  </div>
-
-                  <div className="staff-list-meta">
-                    {getId(member) || "Unknown Discord ID"}
-                  </div>
-                </div>
-
-                <span className="staff-list-arrow">
-                  →
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {selectedMember && (
-        <div
-          className="modal-backdrop"
-          onClick={() =>
-            setSelectedMember(null)
-          }
-        >
-          <div
-            className="glass-modal"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-          >
-            <div className="modal-header">
-              <div>
-                <div className="panel-label">
-                  MEMBER
-                </div>
-
-                <h2 className="section-title">
-                  {getName(selectedMember)}
-                </h2>
-              </div>
-
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() =>
-                  setSelectedMember(null)
-                }
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="detail-grid">
-              <div className="detail-card">
-                <span>Username</span>
-                <strong>
-                  {getName(selectedMember)}
-                </strong>
-              </div>
-
-              <div className="detail-card">
-                <span>Discord ID</span>
-                <strong>
-                  {getId(selectedMember) ||
-                    "Unknown"}
-                </strong>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                marginTop: 20,
-              }}
-            >
-              <button
-                type="button"
-                className="glass-button"
-                onClick={() =>
-                  alert(
-                    "Moderation actions are handled by the Pixel Villa bot."
-                  )
-                }
-              >
-                Moderation Actions
-              </button>
-
-              <button
-                type="button"
-                className="glass-button"
-                onClick={() =>
-                  setSelectedMember(null)
-                }
-              >
-                Close
-              </button>
-            </div>
-
-            <p className="panel-description">
-              This dashboard does not directly execute
-              Discord moderation commands. Actions should
-              remain handled securely by the bot.
+            <p>
+              The moderation API did not return
+              any configured actions.
             </p>
           </div>
         </div>
+      ) : (
+        <div className="card-grid">
+          {actions.map((action) => (
+            <div
+              key={action.id}
+              className="glass-card"
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent:
+                    "space-between",
+                  gap: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <h3>
+                  {action.name ||
+                    action.id}
+                </h3>
+
+                <span className="glass-badge">
+                  MOD
+                </span>
+              </div>
+
+              <p
+                style={{
+                  color:
+                    "rgba(148, 163, 184, 0.85)",
+                  lineHeight: 1.6,
+                  margin: 0,
+                }}
+              >
+                {action.description ||
+                  "Moderation action provided by the bot."}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
+
+      <div
+        className="glass-card"
+        style={{ marginTop: 20 }}
+      >
+        <h3 style={{ marginBottom: 8 }}>
+          Discord-side moderation
+        </h3>
+
+        <p
+          style={{
+            color:
+              "rgba(148, 163, 184, 0.85)",
+            lineHeight: 1.6,
+            margin: 0,
+          }}
+        >
+          Moderation actions are currently
+          handled by the Pixel Villa Support
+          bot. This dashboard page is an
+          administrator reference and does not
+          execute Discord moderation actions.
+        </p>
+      </div>
     </div>
   );
 }
