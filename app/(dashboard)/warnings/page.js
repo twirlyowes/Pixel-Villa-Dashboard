@@ -33,6 +33,7 @@ export default function WarningsPage() {
       }
 
       setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+
       setMessage(
         data.count === 0
           ? "No warnings found."
@@ -40,7 +41,7 @@ export default function WarningsPage() {
       );
     } catch (error) {
       setWarnings([]);
-      setMessage(error.message);
+      setMessage(error.message || "Failed to load warnings.");
     } finally {
       setLoading(false);
     }
@@ -51,6 +52,14 @@ export default function WarningsPage() {
 
     loadWarnings();
   }, [status]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    if (!isAdmin && session?.user?.discordId) {
+      setUserId(session.user.discordId);
+    }
+  }, [status, isAdmin, session]);
 
   async function addWarning() {
     const reason = window.prompt("Enter the warning reason:");
@@ -83,10 +92,19 @@ export default function WarningsPage() {
         throw new Error(data?.error || "Failed to add warning");
       }
 
-      setWarnings(data.warnings || []);
-      setMessage("Warning added successfully.");
+      setWarnings(
+        Array.isArray(data.warnings) ? data.warnings : []
+      );
+
+      if (data.loggedToDiscord === false) {
+        setMessage(
+          "Warning added, but the Discord log could not be sent."
+        );
+      } else {
+        setMessage("Warning added successfully and logged to Discord.");
+      }
     } catch (error) {
-      setMessage(error.message);
+      setMessage(error.message || "Failed to add warning.");
     } finally {
       setLoading(false);
     }
@@ -122,13 +140,20 @@ export default function WarningsPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data?.error || "Failed to remove warning");
+        throw new Error(
+          data?.error || "Failed to remove warning"
+        );
       }
 
-      setWarnings(data.warnings || []);
+      setWarnings(
+        Array.isArray(data.warnings) ? data.warnings : []
+      );
+
       setMessage("Warning removed successfully.");
     } catch (error) {
-      setMessage(error.message);
+      setMessage(
+        error.message || "Failed to remove warning."
+      );
     } finally {
       setLoading(false);
     }
@@ -149,15 +174,24 @@ export default function WarningsPage() {
       <div className="page-header">
         <div>
           <p className="page-eyebrow">MODERATION</p>
-          <h1 className="page-title">Warnings</h1>
+
+          <h1 className="page-title">
+            Warnings
+          </h1>
+
           <p className="page-description">
             View and manage staff warnings.
           </p>
         </div>
 
         <div className="stat-card">
-          <span className="stat-label">TOTAL</span>
-          <span className="stat-value">{warnings.length}</span>
+          <span className="stat-label">
+            TOTAL
+          </span>
+
+          <span className="stat-value">
+            {warnings.length}
+          </span>
         </div>
       </div>
 
@@ -210,7 +244,9 @@ export default function WarningsPage() {
       <div className="space-y-4">
         {warnings.length === 0 ? (
           <div className="glass-card text-center">
-            <div className="mb-3 text-4xl">✓</div>
+            <div className="mb-3 text-4xl">
+              ✓
+            </div>
 
             <h2 className="text-lg font-semibold text-white">
               No warnings
@@ -247,7 +283,9 @@ export default function WarningsPage() {
                       <span className="text-white/30">
                         Moderator
                       </span>
+
                       <br />
+
                       <span className="text-white/70">
                         {warning.moderator || "Unknown"}
                       </span>
@@ -257,7 +295,9 @@ export default function WarningsPage() {
                       <span className="text-white/30">
                         Date
                       </span>
+
                       <br />
+
                       <span className="text-white/70">
                         {warning.timestamp
                           ? new Date(
@@ -271,7 +311,9 @@ export default function WarningsPage() {
 
                 {isAdmin && (
                   <button
-                    onClick={() => removeWarning(warning.id)}
+                    onClick={() =>
+                      removeWarning(warning.id)
+                    }
                     disabled={loading}
                     className="glass-button glass-button-danger"
                   >
