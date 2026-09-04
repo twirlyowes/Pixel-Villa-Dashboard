@@ -1,133 +1,252 @@
-"use client";
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+import { db } from "@/lib/firebaseAdmin";
 
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+function validDiscordId(id) {
+  return /^\d{15,25}$/.test(String(id || ""));
+}
 
-export default function WarningsPage() {
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.isAdmin;
+function serializeWarnings(warnings) {
+  if (!Array.isArray(warnings)) return [];
 
-  const [searchId, setSearchId] = useState("");
-  const [userId, setUserId] = useState(null);
-  const [warnings, setWarnings] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
+  return warnings.map((warning) => ({
+    id: String(warning?.id ?? ""),
+    moderator: String(warning?.moderator ?? "Unknown"),
+    reason: String(warning?.reason ?? "No reason provided"),
+    timestamp: warning?.timestamp ?? null,
+  }));
+}
 
-  async function loadWarnings(id) {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/warnings?userId=${id}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load");
-      setUserId(data.userId);
-      setWarnings(data.warnings || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+export async function GET(req) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.discordId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
-  }
 
-  useEffect(() => {
-    if (!session) return;
-    if (!isAdmin) loadWarnings(session.user.discordId);
-  }, [session, isAdmin]);
+    const loggedInUserId = String(session.user.discordId);
+    const isAdmin = session.user.isAdmin === true;
 
-  function handleSearch(e) {
-    e.preventDefault();
-    if (searchId.trim()) loadWarnings(searchId.trim());
-  }
+    const { searchParams } = new URL(req.url);
+    const requestedUserId = searchParams.get("userId")?.trim();
 
-  async function handleAddWarning(e) {
-    e.preventDefault();
-    if (!userId || !reason.trim()) return;
-    await fetch("/api/warnings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, reason: reason.trim() }),
+    // Admins can search any user.
+    // Staff can only view their own warnings.
+    const userId = isAdmin
+      ? requestedUserId || loggedInUserId
+      : loggedInUserId;
+
+    if (!validDiscordId(userId)) {
+      return NextResponse.json(
+        { error: "Invalid Discord User ID" },
+        { status: 400 }
+      );
+    }
+
+    const warningRef = db.collection("warnings").doc(userId);
+    const snapshot = await warningRef.get();
+
+    if (!snapshot.exists) {
+      return NextResponse.json({
+        success: true,
+        userId,
+        warnings: [],
+        count: 0,
+      });
+    }
+
+    const data = snapshot.data();
+    const warnings = serializeWarnings(data?.warnings);
+
+    return NextResponse.json({
+      success: true,
+      userId,
+      warnings,
+      count: warnings.length,
     });
-    setReason("");
-    loadWarnings(userId);
-  }
+  } catch (error) {
+    console.error("Warnings GET error:", error);
 
-  async function handleRemove(warningId) {
-    if (!confirm("Remove this warning?")) return;
-    await fetch("/api/warnings", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, warningId }),
+    return NextResponse.json(
+      { error: "Failed to fetch warnings" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.discordId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    if (session.user.isAdmin !== true) {
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json();
+
+    const userId = String(body?.userId || "").trim();
+    const reason = String(body?.reason || "").trim();
+
+    if (!validDiscordId(userId)) {
+      return NextResponse.json(
+        { error: "Invalid Discord User ID" },
+        { status: 400 }
+      );
+    }
+
+    if (!reason) {
+      return NextResponse.json(
+        { error: "Warning reason is required" },
+        { status: 400 }
+      );
+    }
+
+    const warningRef = db.collection("warnings").doc(userId);
+    const snapshot = await warningRef.get();
+
+    const existingWarnings = snapshot.exists
+      ? snapshot.data()?.warnings
+      : [];
+
+    const warnings = Array.isArray(existingWarnings)
+      ? existingWarnings
+      : [];
+
+    const newWarning = {
+      id: `${Date.now()}`,
+      moderator:
+        session.user.discordId ||
+        session.user.username ||
+        "Unknown",
+      reason,
+      timestamp: new Date().toISOString(),
+    };
+
+    warnings.push(newWarning);
+
+    await warningRef.set({
+      warnings,
     });
-    loadWarnings(userId);
+
+    return NextResponse.json({
+      success: true,
+      warning: newWarning,
+      warnings: serializeWarnings(warnings),
+      count: warnings.length,
+    });
+  } catch (error) {
+    console.error("Warnings POST error:", error);
+
+    return NextResponse.json(
+      { error: "Failed to add warning" },
+      { status: 500 }
+    );
   }
+}
 
-  return (
-    <div>
-      <h1 className="text-xl font-medium mb-6">Warnings</h1>
+export async function DELETE(req) {
+  try {
+    const session = await getServerSession(authOptions);
 
-      {isAdmin && (
-        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-          <input
-            type="text"
-            value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
-            placeholder="Discord User ID"
-            className="flex-1 rounded-lg border border-border bg-panel px-3 py-2 text-sm"
-          />
-          <button type="submit" className="bg-accent text-white text-sm px-4 py-2 rounded-lg">
-            Search
-          </button>
-        </form>
-      )}
+    if (!session?.user?.discordId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
-      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-      {loading && <p className="text-gray-400 text-sm">Loading…</p>}
+    if (session.user.isAdmin !== true) {
+      return NextResponse.json(
+        { error: "Admin access required" },
+        { status: 403 }
+      );
+    }
 
-      {!loading && userId && (
-        <>
-          {isAdmin && (
-            <form onSubmit={handleAddWarning} className="bg-panel border border-border rounded-xl p-4 mb-4 flex gap-2">
-              <input
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Reason for warning"
-                className="flex-1 rounded-lg border border-border bg-white/5 px-3 py-2 text-sm"
-              />
-              <button type="submit" className="bg-accent text-white text-sm px-4 py-2 rounded-lg">
-                Add warning
-              </button>
-            </form>
-          )}
+    const body = await req.json();
 
-          {warnings.length === 0 ? (
-            <p className="text-gray-400 text-sm">No warnings on record for this user.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {warnings.slice().reverse().map((w) => (
-                <div key={w.id} className="bg-panel border border-border rounded-xl p-4">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="text-xs text-gray-500">ID: {w.id}</span>
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleRemove(w.id)}
-                        className="text-red-400 hover:text-red-300 text-xs"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-sm mb-1">{w.reason}</p>
-                  <p className="text-xs text-gray-500">
-                    By {w.moderator} · {new Date(w.timestamp).toLocaleString()}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+    const userId = String(body?.userId || "").trim();
+    const warningId = String(body?.warningId || "").trim();
+
+    if (!validDiscordId(userId)) {
+      return NextResponse.json(
+        { error: "Invalid Discord User ID" },
+        { status: 400 }
+      );
+    }
+
+    if (!warningId) {
+      return NextResponse.json(
+        { error: "Warning ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const warningRef = db.collection("warnings").doc(userId);
+    const snapshot = await warningRef.get();
+
+    if (!snapshot.exists) {
+      return NextResponse.json(
+        { error: "No warnings found" },
+        { status: 404 }
+      );
+    }
+
+    const data = snapshot.data();
+
+    const warnings = Array.isArray(data?.warnings)
+      ? data.warnings
+      : [];
+
+    const index = warnings.findIndex(
+      (warning) => String(warning?.id) === warningId
+    );
+
+    if (index === -1) {
+      return NextResponse.json(
+        { error: "Warning not found" },
+        { status: 404 }
+      );
+    }
+
+    const removedWarning = warnings[index];
+
+    warnings.splice(index, 1);
+
+    if (warnings.length === 0) {
+      await warningRef.delete();
+    } else {
+      await warningRef.set({
+        warnings,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      removedWarning,
+      warnings: serializeWarnings(warnings),
+      count: warnings.length,
+    });
+  } catch (error) {
+    console.error("Warnings DELETE error:", error);
+
+    return NextResponse.json(
+      { error: "Failed to remove warning" },
+      { status: 500 }
+    );
+  }
 }
