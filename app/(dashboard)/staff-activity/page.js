@@ -1,136 +1,407 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useEffect, useMemo, useState } from "react";
 
-function formatDuration(ms = 0) {
-  const totalMinutes = Math.floor(ms / 60000);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${h}h ${m}m`;
+function formatTime(seconds = 0) {
+  const total = Number(seconds) || 0;
+
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
-function StatsCard({ label, stats }) {
-  return (
-    <div className="bg-panel border border-border rounded-xl p-4">
-      <div className="text-sm text-gray-400 mb-3">{label}</div>
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <div className="text-gray-500 text-xs">Active time</div>
-          <div>{formatDuration(stats.activeTime)}</div>
-        </div>
-        <div>
-          <div className="text-gray-500 text-xs">Voice time</div>
-          <div>{formatDuration(stats.voiceTime)}</div>
-        </div>
-        <div>
-          <div className="text-gray-500 text-xs">Messages</div>
-          <div>{stats.messages ?? 0}</div>
-        </div>
-        <div>
-          <div className="text-gray-500 text-xs">Commands</div>
-          <div>{stats.commands ?? 0}</div>
-        </div>
-      </div>
-    </div>
-  );
+function formatNumber(value = 0) {
+  return new Intl.NumberFormat().format(Number(value) || 0);
 }
 
 export default function StaffActivityPage() {
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.isAdmin;
-
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [searchId, setSearchId] = useState("");
-  const [searchResult, setSearchResult] = useState(null);
-  const [own, setOwn] = useState(null);
+  const [data, setData] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadActivity() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await fetch("/api/staff-activity", {
+        cache: "no-store",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to load staff activity.");
+      }
+
+      setData(result);
+    } catch (err) {
+      setError(err.message || "Failed to load staff activity.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    if (!session) return;
+    loadActivity();
+  }, []);
 
-    if (isAdmin) {
-      fetch("/api/staff-activity")
-        .then((r) => r.json())
-        .then((data) => {
-          setLeaderboard(data.staff || []);
-          setLoading(false);
-        });
-    } else {
-      fetch(`/api/staff-activity?userId=${session.user.discordId}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setOwn(data.stats || {});
-          setLoading(false);
-        });
-    }
-  }, [session, isAdmin]);
+  const staff = useMemo(() => {
+    if (!data) return [];
 
-  async function handleSearch(e) {
-    e.preventDefault();
-    if (!searchId.trim()) return;
-    const res = await fetch(`/api/staff-activity?userId=${searchId.trim()}`);
-    const data = await res.json();
-    setSearchResult({ userId: data.userId, stats: data.stats || {} });
+    const list =
+      data.staff ||
+      data.users ||
+      data.activity ||
+      data.data ||
+      [];
+
+    return Array.isArray(list) ? list : [];
+  }, [data]);
+
+  const filteredStaff = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return staff;
+
+    return staff.filter((member) => {
+      const name = String(
+        member.username ||
+          member.name ||
+          member.tag ||
+          member.userId ||
+          member.discordId ||
+          ""
+      ).toLowerCase();
+
+      return name.includes(query);
+    });
+  }, [staff, search]);
+
+  const totals = useMemo(() => {
+    return staff.reduce(
+      (acc, member) => {
+        acc.activeTime += Number(member.activeTime) || 0;
+        acc.messages += Number(member.messages) || 0;
+        acc.commands += Number(member.commands) || 0;
+
+        return acc;
+      },
+      {
+        activeTime: 0,
+        messages: 0,
+        commands: 0,
+      }
+    );
+  }, [staff]);
+
+  const topStaff = useMemo(() => {
+    return [...staff]
+      .sort(
+        (a, b) =>
+          (Number(b.activeTime) || 0) -
+          (Number(a.activeTime) || 0)
+      )
+      .slice(0, 5);
+  }, [staff]);
+
+  function getName(member) {
+    return (
+      member.username ||
+      member.name ||
+      member.tag ||
+      member.userId ||
+      member.discordId ||
+      "Unknown Staff"
+    );
+  }
+
+  function getId(member) {
+    return member.userId || member.discordId || member.id || "";
+  }
+
+  function getRank(index) {
+    if (index === 0) return "🥇";
+    if (index === 1) return "🥈";
+    if (index === 2) return "🥉";
+    return `#${index + 1}`;
   }
 
   return (
-    <div>
-      <h1 className="text-xl font-medium mb-6">Staff activity</h1>
+    <div className="page-container">
+      <div className="page-header">
+        <div>
+          <div className="status-pill">
+            <span className="status-dot" />
+            Live Activity Data
+          </div>
 
-      {!isAdmin && own && <StatsCard label="Your stats today" stats={own} />}
+          <h1 className="page-title">
+            Staff <span className="gradient-text">Activity</span>
+          </h1>
 
-      {isAdmin && (
-        <>
-          <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-            <input
-              type="text"
-              value={searchId}
-              onChange={(e) => setSearchId(e.target.value)}
-              placeholder="Look up one user by Discord ID"
-              className="flex-1 rounded-lg border border-border bg-panel px-3 py-2 text-sm"
-            />
-            <button type="submit" className="bg-accent text-white text-sm px-4 py-2 rounded-lg">
-              Search
-            </button>
-          </form>
+          <p className="page-subtitle">
+            Monitor staff activity, active time, messages and commands.
+          </p>
+        </div>
 
-          {searchResult && (
-            <div className="mb-6">
-              <StatsCard label={`User ${searchResult.userId}`} stats={searchResult.stats} />
+        <button
+          type="button"
+          className="glass-button"
+          onClick={loadActivity}
+          disabled={loading}
+        >
+          {loading ? "Refreshing..." : "↻ Refresh"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="glass-panel" style={{ marginBottom: 20 }}>
+          <div style={{ color: "#fca5a5", fontWeight: 600 }}>
+            Unable to load activity
+          </div>
+
+          <p className="panel-description">{error}</p>
+
+          <button
+            type="button"
+            className="glass-button"
+            onClick={loadActivity}
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
+      <section className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-card-label">STAFF MEMBERS</div>
+          <div className="stat-card-value">
+            {loading ? "—" : formatNumber(staff.length)}
+          </div>
+          <div className="stat-card-subtitle">
+            Tracked staff accounts
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-card-label">TOTAL ACTIVE TIME</div>
+          <div className="stat-card-value">
+            {loading ? "—" : formatTime(totals.activeTime)}
+          </div>
+          <div className="stat-card-subtitle">
+            Current activity period
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-card-label">MESSAGES</div>
+          <div className="stat-card-value">
+            {loading ? "—" : formatNumber(totals.messages)}
+          </div>
+          <div className="stat-card-subtitle">
+            Staff messages recorded
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-card-label">COMMANDS</div>
+          <div className="stat-card-value">
+            {loading ? "—" : formatNumber(totals.commands)}
+          </div>
+          <div className="stat-card-subtitle">
+            Commands recorded
+          </div>
+        </div>
+      </section>
+
+      <section className="content-grid">
+        <div className="glass-panel">
+          <div className="panel-header">
+            <div>
+              <div className="panel-label">LEADERBOARD</div>
+              <h2 className="section-title">Top Staff</h2>
             </div>
-          )}
+          </div>
 
-          <h2 className="text-sm text-gray-400 mb-3">Today's leaderboard</h2>
           {loading ? (
-            <p className="text-gray-400 text-sm">Loading…</p>
+            <div className="empty-state">Loading activity...</div>
+          ) : topStaff.length === 0 ? (
+            <div className="empty-state">
+              No staff activity data found.
+            </div>
           ) : (
-            <div className="bg-panel border border-border rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-white/5 text-gray-400 text-left">
-                  <tr>
-                    <th className="p-3">User ID</th>
-                    <th className="p-3">Active time</th>
-                    <th className="p-3">Voice time</th>
-                    <th className="p-3">Messages</th>
-                    <th className="p-3">Commands</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboard.map((s) => (
-                    <tr key={s.id} className="border-t border-border">
-                      <td className="p-3">{s.id}</td>
-                      <td className="p-3">{formatDuration(s.activeTime)}</td>
-                      <td className="p-3">{formatDuration(s.voiceTime)}</td>
-                      <td className="p-3">{s.messages ?? 0}</td>
-                      <td className="p-3">{s.commands ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="leaderboard">
+              {topStaff.map((member, index) => (
+                <button
+                  type="button"
+                  key={`${getId(member)}-${index}`}
+                  className="leaderboard-row"
+                  onClick={() => setSelected(member)}
+                >
+                  <div className="leaderboard-rank">
+                    {getRank(index)}
+                  </div>
+
+                  <div className="leaderboard-user">
+                    <div className="leaderboard-avatar">
+                      {getName(member).charAt(0).toUpperCase()}
+                    </div>
+
+                    <div>
+                      <div className="leaderboard-name">
+                        {getName(member)}
+                      </div>
+
+                      <div className="leaderboard-id">
+                        {getId(member) || "No ID"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="leaderboard-time">
+                    {formatTime(member.activeTime)}
+                  </div>
+                </button>
+              ))}
             </div>
           )}
-        </>
+        </div>
+
+        <div className="glass-panel">
+          <div className="panel-header">
+            <div>
+              <div className="panel-label">STAFF DIRECTORY</div>
+              <h2 className="section-title">All Staff</h2>
+            </div>
+
+            <span className="panel-count">
+              {filteredStaff.length}
+            </span>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <input
+              className="glass-input"
+              type="search"
+              placeholder="Search staff..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+
+          {loading ? (
+            <div className="empty-state">Loading staff...</div>
+          ) : filteredStaff.length === 0 ? (
+            <div className="empty-state">
+              No matching staff members.
+            </div>
+          ) : (
+            <div className="staff-list">
+              {filteredStaff.map((member, index) => (
+                <button
+                  type="button"
+                  key={`${getId(member)}-${index}`}
+                  className="staff-list-row"
+                  onClick={() => setSelected(member)}
+                >
+                  <div className="staff-list-avatar">
+                    {getName(member).charAt(0).toUpperCase()}
+                  </div>
+
+                  <div className="staff-list-info">
+                    <div className="staff-list-name">
+                      {getName(member)}
+                    </div>
+
+                    <div className="staff-list-meta">
+                      {formatTime(member.activeTime)} active
+                      {" • "}
+                      {formatNumber(member.messages)} messages
+                    </div>
+                  </div>
+
+                  <span className="staff-list-arrow">
+                    →
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {selected && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="glass-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <div className="panel-label">STAFF DETAILS</div>
+                <h2 className="section-title">
+                  {getName(selected)}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSelected(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="detail-grid">
+              <div className="detail-card">
+                <span>Active Time</span>
+                <strong>
+                  {formatTime(selected.activeTime)}
+                </strong>
+              </div>
+
+              <div className="detail-card">
+                <span>Messages</span>
+                <strong>
+                  {formatNumber(selected.messages)}
+                </strong>
+              </div>
+
+              <div className="detail-card">
+                <span>Commands</span>
+                <strong>
+                  {formatNumber(selected.commands)}
+                </strong>
+              </div>
+
+              <div className="detail-card">
+                <span>Discord ID</span>
+                <strong>
+                  {getId(selected) || "Unknown"}
+                </strong>
+              </div>
+            </div>
+
+            {selected.updatedAt && (
+              <p className="panel-description">
+                Last updated:{" "}
+                {new Date(
+                  selected.updatedAt
+                ).toLocaleString()}
+              </p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
