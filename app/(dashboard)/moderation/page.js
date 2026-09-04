@@ -1,113 +1,349 @@
 "use client";
 
-import { useState } from "react";
-import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 
 export default function ModerationPage() {
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.isAdmin;
+  const [members, setMembers] = useState([]);
+  const [search, setSearch] = useState("");
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const [userId, setUserId] = useState("");
-  const [duration, setDuration] = useState("10");
-  const [reason, setReason] = useState("");
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  async function runAction(action) {
-    if (!userId.trim()) {
-      setStatus("Enter a Discord User ID first.");
-      return;
-    }
-    setLoading(true);
-    setStatus("");
+  async function loadMembers() {
     try {
-      const res = await fetch("/api/moderation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: userId.trim(),
-          action,
-          durationMinutes: Number(duration),
-          reason: reason.trim(),
-        }),
+      setLoading(true);
+      setError("");
+
+      const response = await fetch("/api/moderation", {
+        cache: "no-store",
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Action failed");
-      setStatus(action === "mute" ? "User muted." : "User unmuted.");
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error || "Failed to load moderation data."
+        );
+      }
+
+      const list =
+        result.members ||
+        result.users ||
+        result.data ||
+        [];
+
+      setMembers(Array.isArray(list) ? list : []);
     } catch (err) {
-      setStatus(err.message);
+      setError(
+        err.message || "Failed to load moderation data."
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  if (!isAdmin) {
+  useEffect(() => {
+    loadMembers();
+  }, []);
+
+  const filteredMembers = members.filter((member) => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return true;
+
+    const username = String(
+      member.username ||
+        member.name ||
+        member.tag ||
+        ""
+    ).toLowerCase();
+
+    const id = String(
+      member.userId ||
+        member.discordId ||
+        member.id ||
+        ""
+    ).toLowerCase();
+
     return (
-      <div>
-        <h1 className="text-xl font-medium mb-4">Moderation</h1>
-        <p className="text-gray-400 text-sm">Admins only.</p>
-      </div>
+      username.includes(query) ||
+      id.includes(query)
+    );
+  });
+
+  function getName(member) {
+    return (
+      member.username ||
+      member.name ||
+      member.tag ||
+      member.userId ||
+      member.discordId ||
+      "Unknown User"
+    );
+  }
+
+  function getId(member) {
+    return (
+      member.userId ||
+      member.discordId ||
+      member.id ||
+      ""
     );
   }
 
   return (
-    <div>
-      <h1 className="text-xl font-medium mb-6">Moderation</h1>
-
-      <div className="bg-panel border border-border rounded-xl p-5 max-w-md flex flex-col gap-4">
+    <div className="page-container">
+      <div className="page-header">
         <div>
-          <label className="mb-2 block text-sm text-gray-300">Discord User ID</label>
-          <input
-            type="text"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            placeholder="e.g. 123456789012345678"
-            className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm"
-          />
+          <div className="status-pill">
+            <span className="status-dot" />
+            Administration
+          </div>
+
+          <h1 className="page-title">
+            <span className="gradient-text">Moderation</span>
+          </h1>
+
+          <p className="page-subtitle">
+            Manage moderation information and member actions.
+          </p>
         </div>
 
-        <div>
-          <label className="mb-2 block text-sm text-gray-300">Mute duration (minutes)</label>
-          <input
-            type="number"
-            min="1"
-            max="40320"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm text-gray-300">Reason</label>
-          <input
-            type="text"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Reason"
-            className="w-full rounded-lg border border-border bg-white/5 px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => runAction("mute")}
-            disabled={loading}
-            className="flex-1 bg-red-600 hover:bg-red-500 text-white text-sm py-2 rounded-lg disabled:opacity-50"
-          >
-            Mute
-          </button>
-          <button
-            onClick={() => runAction("unmute")}
-            disabled={loading}
-            className="flex-1 bg-green-600 hover:bg-green-500 text-white text-sm py-2 rounded-lg disabled:opacity-50"
-          >
-            Unmute
-          </button>
-        </div>
-
-        {status && <p className="text-sm text-gray-300">{status}</p>}
+        <button
+          type="button"
+          className="glass-button"
+          onClick={loadMembers}
+          disabled={loading}
+        >
+          {loading ? "Refreshing..." : "↻ Refresh"}
+        </button>
       </div>
+
+      {error && (
+        <div
+          className="glass-panel"
+          style={{ marginBottom: 20 }}
+        >
+          <div
+            style={{
+              color: "#fca5a5",
+              fontWeight: 600,
+            }}
+          >
+            Unable to load moderation data
+          </div>
+
+          <p className="panel-description">
+            {error}
+          </p>
+
+          <button
+            type="button"
+            className="glass-button"
+            onClick={loadMembers}
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
+      <section className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-card-label">
+            MEMBERS
+          </div>
+
+          <div className="stat-card-value">
+            {loading ? "—" : members.length}
+          </div>
+
+          <div className="stat-card-subtitle">
+            Members returned by moderation API
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-card-label">
+            SEARCH RESULTS
+          </div>
+
+          <div className="stat-card-value">
+            {loading ? "—" : filteredMembers.length}
+          </div>
+
+          <div className="stat-card-subtitle">
+            Members matching your search
+          </div>
+        </div>
+      </section>
+
+      <section className="glass-panel">
+        <div className="panel-header">
+          <div>
+            <div className="panel-label">
+              MODERATION
+            </div>
+
+            <h2 className="section-title">
+              Member Management
+            </h2>
+          </div>
+
+          <span className="panel-count">
+            {filteredMembers.length}
+          </span>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <input
+            className="glass-input"
+            type="search"
+            placeholder="Search username or Discord ID..."
+            value={search}
+            onChange={(event) =>
+              setSearch(event.target.value)
+            }
+          />
+        </div>
+
+        {loading ? (
+          <div className="empty-state">
+            Loading members...
+          </div>
+        ) : filteredMembers.length === 0 ? (
+          <div className="empty-state">
+            {search
+              ? "No members match your search."
+              : "No member data available."}
+          </div>
+        ) : (
+          <div className="staff-list">
+            {filteredMembers.map((member, index) => (
+              <button
+                type="button"
+                key={`${getId(member)}-${index}`}
+                className="staff-list-row"
+                onClick={() =>
+                  setSelectedMember(member)
+                }
+              >
+                <div className="staff-list-avatar">
+                  {getName(member)
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
+
+                <div className="staff-list-info">
+                  <div className="staff-list-name">
+                    {getName(member)}
+                  </div>
+
+                  <div className="staff-list-meta">
+                    {getId(member) || "Unknown Discord ID"}
+                  </div>
+                </div>
+
+                <span className="staff-list-arrow">
+                  →
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {selectedMember && (
+        <div
+          className="modal-backdrop"
+          onClick={() =>
+            setSelectedMember(null)
+          }
+        >
+          <div
+            className="glass-modal"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="modal-header">
+              <div>
+                <div className="panel-label">
+                  MEMBER
+                </div>
+
+                <h2 className="section-title">
+                  {getName(selectedMember)}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() =>
+                  setSelectedMember(null)
+                }
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="detail-grid">
+              <div className="detail-card">
+                <span>Username</span>
+                <strong>
+                  {getName(selectedMember)}
+                </strong>
+              </div>
+
+              <div className="detail-card">
+                <span>Discord ID</span>
+                <strong>
+                  {getId(selectedMember) ||
+                    "Unknown"}
+                </strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                marginTop: 20,
+              }}
+            >
+              <button
+                type="button"
+                className="glass-button"
+                onClick={() =>
+                  alert(
+                    "Moderation actions are handled by the Pixel Villa bot."
+                  )
+                }
+              >
+                Moderation Actions
+              </button>
+
+              <button
+                type="button"
+                className="glass-button"
+                onClick={() =>
+                  setSelectedMember(null)
+                }
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="panel-description">
+              This dashboard does not directly execute
+              Discord moderation commands. Actions should
+              remain handled securely by the bot.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
