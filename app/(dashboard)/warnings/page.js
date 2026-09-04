@@ -1,80 +1,132 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 export default function WarningsPage() {
-  const [warnings, setWarnings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.isAdmin;
 
-  async function load() {
+  const [searchId, setSearchId] = useState("");
+  const [userId, setUserId] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+
+  async function loadWarnings(id) {
     setLoading(true);
-    const res = await fetch("/api/warnings");
-    const data = await res.json();
-    setWarnings(data.warnings || []);
-    setLoading(false);
+    setError("");
+    try {
+      const res = await fetch(`/api/warnings?userId=${id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load");
+      setUserId(data.userId);
+      setWarnings(data.warnings || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    if (!session) return;
+    if (!isAdmin) loadWarnings(session.user.discordId);
+  }, [session, isAdmin]);
 
-  async function handleDelete(id) {
-    if (!confirm("Delete this warning? This can't be undone.")) return;
+  function handleSearch(e) {
+    e.preventDefault();
+    if (searchId.trim()) loadWarnings(searchId.trim());
+  }
+
+  async function handleAddWarning(e) {
+    e.preventDefault();
+    if (!userId || !reason.trim()) return;
+    await fetch("/api/warnings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, reason: reason.trim() }),
+    });
+    setReason("");
+    loadWarnings(userId);
+  }
+
+  async function handleRemove(warningId) {
+    if (!confirm("Remove this warning?")) return;
     await fetch("/api/warnings", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ userId, warningId }),
     });
-    load();
+    loadWarnings(userId);
   }
 
   return (
     <div>
       <h1 className="text-xl font-medium mb-6">Warnings</h1>
-      {loading ? (
-        <p className="text-gray-400 text-sm">Loading…</p>
-      ) : warnings.length === 0 ? (
-        <p className="text-gray-400 text-sm">No warnings found.</p>
-      ) : (
-        <div className="bg-panel border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-white/5 text-gray-400 text-left">
-              <tr>
-                <th className="p-3">Member</th>
-                <th className="p-3">Reason</th>
-                <th className="p-3">Moderator</th>
-                <th className="p-3">Date</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {warnings.map((w) => (
-                <tr key={w.id} className="border-t border-border">
-                  <td className="p-3">{w.userTag || w.userId}</td>
-                  <td className="p-3">{w.reason}</td>
-                  <td className="p-3">{w.moderatorTag || w.moderatorId}</td>
-                  <td className="p-3">
-                    {w.timestamp
-                      ? new Date(
-                          w.timestamp._seconds
-                            ? w.timestamp._seconds * 1000
-                            : w.timestamp
-                        ).toLocaleString()
-                      : "—"}
-                  </td>
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => handleDelete(w.id)}
-                      className="text-red-400 hover:text-red-300"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
+
+      {isAdmin && (
+        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
+          <input
+            type="text"
+            value={searchId}
+            onChange={(e) => setSearchId(e.target.value)}
+            placeholder="Discord User ID"
+            className="flex-1 rounded-lg border border-border bg-panel px-3 py-2 text-sm"
+          />
+          <button type="submit" className="bg-accent text-white text-sm px-4 py-2 rounded-lg">
+            Search
+          </button>
+        </form>
+      )}
+
+      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      {loading && <p className="text-gray-400 text-sm">Loading…</p>}
+
+      {!loading && userId && (
+        <>
+          {isAdmin && (
+            <form onSubmit={handleAddWarning} className="bg-panel border border-border rounded-xl p-4 mb-4 flex gap-2">
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Reason for warning"
+                className="flex-1 rounded-lg border border-border bg-white/5 px-3 py-2 text-sm"
+              />
+              <button type="submit" className="bg-accent text-white text-sm px-4 py-2 rounded-lg">
+                Add warning
+              </button>
+            </form>
+          )}
+
+          {warnings.length === 0 ? (
+            <p className="text-gray-400 text-sm">No warnings on record for this user.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {warnings.slice().reverse().map((w) => (
+                <div key={w.id} className="bg-panel border border-border rounded-xl p-4">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs text-gray-500">ID: {w.id}</span>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleRemove(w.id)}
+                        className="text-red-400 hover:text-red-300 text-xs"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-sm mb-1">{w.reason}</p>
+                  <p className="text-xs text-gray-500">
+                    By {w.moderator} · {new Date(w.timestamp).toLocaleString()}
+                  </p>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
