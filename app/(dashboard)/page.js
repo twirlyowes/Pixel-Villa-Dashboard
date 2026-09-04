@@ -21,6 +21,14 @@ async function getAdminStats() {
 }
 
 async function getOwnStats(userId) {
+  if (!userId || typeof userId !== "string") {
+    return {
+      warnings: 0,
+      isAfk: false,
+      activeTime: 0,
+    };
+  }
+
   const [warnDoc, afkDoc, activeDoc] = await Promise.all([
     db.collection("warnings").doc(userId).get(),
     db.collection("afk").doc(userId).get(),
@@ -38,15 +46,30 @@ function formatDuration(ms = 0) {
   const totalMinutes = Math.floor(ms / 60000);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
+
   return `${h}h ${m}m`;
 }
 
 export default async function OverviewPage() {
   const session = await getServerSession(authOptions);
-  const isAdmin = session?.user?.isAdmin;
+
+  // Prevent errors when the user isn't properly authenticated
+  if (!session?.user) {
+    return (
+      <div>
+        <h1 className="text-xl font-medium">Unauthorized</h1>
+        <p className="text-gray-400 mt-2">
+          Please sign in to access the dashboard.
+        </p>
+      </div>
+    );
+  }
+
+  const isAdmin = session.user?.isAdmin;
 
   if (isAdmin) {
     const stats = await getAdminStats();
+
     const cards = [
       { label: "Users with warnings", value: stats.usersWithWarnings },
       { label: "Currently AFK", value: stats.currentlyAfk },
@@ -56,11 +79,20 @@ export default async function OverviewPage() {
     return (
       <div>
         <h1 className="text-xl font-medium mb-6">Overview</h1>
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {cards.map((c) => (
-            <div key={c.label} className="bg-panel border border-border rounded-xl p-5">
-              <div className="text-sm text-gray-400 mb-1">{c.label}</div>
-              <div className="text-2xl font-medium">{c.value}</div>
+            <div
+              key={c.label}
+              className="bg-panel border border-border rounded-xl p-5"
+            >
+              <div className="text-sm text-gray-400 mb-1">
+                {c.label}
+              </div>
+
+              <div className="text-2xl font-medium">
+                {c.value}
+              </div>
             </div>
           ))}
         </div>
@@ -68,23 +100,55 @@ export default async function OverviewPage() {
     );
   }
 
-  const own = await getOwnStats(session.user.discordId);
+  // Get Discord ID safely
+  const discordId = session.user?.discordId;
+
+  if (!discordId) {
+    return (
+      <div>
+        <h1 className="text-xl font-medium mb-6">
+          Welcome, {session.user?.username || "User"}
+        </h1>
+
+        <div className="bg-panel border border-border rounded-xl p-5">
+          <p className="text-gray-400">
+            Discord account information could not be found.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const own = await getOwnStats(String(discordId));
+
   const cards = [
     { label: "Your warnings", value: own.warnings },
     { label: "AFK status", value: own.isAfk ? "AFK" : "Active" },
-    { label: "Your active time today", value: formatDuration(own.activeTime) },
+    {
+      label: "Your active time today",
+      value: formatDuration(own.activeTime),
+    },
   ];
 
   return (
     <div>
       <h1 className="text-xl font-medium mb-6">
-        Welcome, {session.user.username}
+        Welcome, {session.user.username || "User"}
       </h1>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {cards.map((c) => (
-          <div key={c.label} className="bg-panel border border-border rounded-xl p-5">
-            <div className="text-sm text-gray-400 mb-1">{c.label}</div>
-            <div className="text-2xl font-medium">{c.value}</div>
+          <div
+            key={c.label}
+            className="bg-panel border border-border rounded-xl p-5"
+          >
+            <div className="text-sm text-gray-400 mb-1">
+              {c.label}
+            </div>
+
+            <div className="text-2xl font-medium">
+              {c.value}
+            </div>
           </div>
         ))}
       </div>
