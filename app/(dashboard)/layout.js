@@ -2,9 +2,12 @@ import Sidebar from "@/components/Sidebar";
 
 export default function DashboardLayout({ children }) {
   return (
-    <div className="flex min-h-screen">
+    <div className="dashboard-shell">
       <Sidebar />
-      <main className="flex-1 p-6">{children}</main>
+
+      <main className="dashboard-main">
+        {children}
+      </main>
     </div>
   );
 }
