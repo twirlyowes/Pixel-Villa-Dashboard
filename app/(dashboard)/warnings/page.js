@@ -4,130 +4,285 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 export default function WarningsPage() {
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.isAdmin;
+  const { data: session, status } = useSession();
 
-  const [searchId, setSearchId] = useState("");
-  const [userId, setUserId] = useState(null);
+  const [userId, setUserId] = useState("");
   const [warnings, setWarnings] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  async function loadWarnings(id) {
+  const isAdmin = session?.user?.isAdmin === true;
+
+  async function loadWarnings(targetUserId = "") {
     setLoading(true);
-    setError("");
+    setMessage("");
+
     try {
-      const res = await fetch(`/api/warnings?userId=${id}`);
+      const query = targetUserId
+        ? `?userId=${encodeURIComponent(targetUserId)}`
+        : "";
+
+      const res = await fetch(`/api/warnings${query}`, {
+        cache: "no-store",
+      });
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load");
-      setUserId(data.userId);
-      setWarnings(data.warnings || []);
-    } catch (err) {
-      setError(err.message);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to load warnings");
+      }
+
+      setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setMessage(
+        data.count === 0
+          ? "No warnings found."
+          : `${data.count} warning${data.count === 1 ? "" : "s"} found.`
+      );
+    } catch (error) {
+      setWarnings([]);
+      setMessage(error.message);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (!session) return;
-    if (!isAdmin) loadWarnings(session.user.discordId);
-  }, [session, isAdmin]);
+    if (status !== "authenticated") return;
 
-  function handleSearch(e) {
-    e.preventDefault();
-    if (searchId.trim()) loadWarnings(searchId.trim());
+    loadWarnings();
+  }, [status]);
+
+  async function addWarning() {
+    const reason = window.prompt("Enter the warning reason:");
+
+    if (!reason?.trim()) return;
+
+    if (!userId.trim()) {
+      setMessage("Enter a Discord User ID first.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/warnings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: userId.trim(),
+          reason: reason.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to add warning");
+      }
+
+      setWarnings(data.warnings || []);
+      setMessage("Warning added successfully.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function handleAddWarning(e) {
-    e.preventDefault();
-    if (!userId || !reason.trim()) return;
-    await fetch("/api/warnings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, reason: reason.trim() }),
-    });
-    setReason("");
-    loadWarnings(userId);
+  async function removeWarning(warningId) {
+    if (!userId.trim()) {
+      setMessage("Enter a Discord User ID first.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Are you sure you want to remove this warning?"
+    );
+
+    if (!confirmed) return;
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/warnings", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: userId.trim(),
+          warningId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to remove warning");
+      }
+
+      setWarnings(data.warnings || []);
+      setMessage("Warning removed successfully.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function handleRemove(warningId) {
-    if (!confirm("Remove this warning?")) return;
-    await fetch("/api/warnings", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, warningId }),
-    });
-    loadWarnings(userId);
+  if (status === "loading") {
+    return (
+      <div className="glass-page">
+        <div className="glass-card">
+          <p className="text-white/60">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div>
-      <h1 className="text-xl font-medium mb-6">Warnings</h1>
+    <div className="glass-page">
+      <div className="page-header">
+        <div>
+          <p className="page-eyebrow">MODERATION</p>
+          <h1 className="page-title">Warnings</h1>
+          <p className="page-description">
+            View and manage staff warnings.
+          </p>
+        </div>
 
-      {isAdmin && (
-        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-          <input
-            type="text"
-            value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
-            placeholder="Discord User ID"
-            className="flex-1 rounded-lg border border-border bg-panel px-3 py-2 text-sm"
-          />
-          <button type="submit" className="bg-accent text-white text-sm px-4 py-2 rounded-lg">
-            Search
+        <div className="stat-card">
+          <span className="stat-label">TOTAL</span>
+          <span className="stat-value">{warnings.length}</span>
+        </div>
+      </div>
+
+      <div className="glass-card mb-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+          <div className="flex-1">
+            <label className="glass-label">
+              Discord User ID
+            </label>
+
+            <input
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              placeholder={
+                isAdmin
+                  ? "Enter a Discord User ID"
+                  : "Your Discord User ID"
+              }
+              disabled={!isAdmin}
+              className="glass-input"
+            />
+          </div>
+
+          <button
+            onClick={() => loadWarnings(userId.trim())}
+            disabled={loading}
+            className="glass-button"
+          >
+            {loading ? "Loading..." : "Search"}
           </button>
-        </form>
-      )}
 
-      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-      {loading && <p className="text-gray-400 text-sm">Loading…</p>}
-
-      {!loading && userId && (
-        <>
           {isAdmin && (
-            <form onSubmit={handleAddWarning} className="bg-panel border border-border rounded-xl p-4 mb-4 flex gap-2">
-              <input
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Reason for warning"
-                className="flex-1 rounded-lg border border-border bg-white/5 px-3 py-2 text-sm"
-              />
-              <button type="submit" className="bg-accent text-white text-sm px-4 py-2 rounded-lg">
-                Add warning
-              </button>
-            </form>
+            <button
+              onClick={addWarning}
+              disabled={loading}
+              className="glass-button glass-button-primary"
+            >
+              + Add Warning
+            </button>
           )}
+        </div>
 
-          {warnings.length === 0 ? (
-            <p className="text-gray-400 text-sm">No warnings on record for this user.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {warnings.slice().reverse().map((w) => (
-                <div key={w.id} className="bg-panel border border-border rounded-xl p-4">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="text-xs text-gray-500">ID: {w.id}</span>
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleRemove(w.id)}
-                        className="text-red-400 hover:text-red-300 text-xs"
-                      >
-                        Remove
-                      </button>
-                    )}
+        {message && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+            {message}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        {warnings.length === 0 ? (
+          <div className="glass-card text-center">
+            <div className="mb-3 text-4xl">✓</div>
+
+            <h2 className="text-lg font-semibold text-white">
+              No warnings
+            </h2>
+
+            <p className="mt-1 text-sm text-white/50">
+              This user currently has no recorded warnings.
+            </p>
+          </div>
+        ) : (
+          warnings.map((warning, index) => (
+            <div
+              key={warning.id || index}
+              className="glass-card warning-card"
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="warning-number">
+                      #{index + 1}
+                    </span>
+
+                    <span className="warning-id">
+                      ID: {warning.id}
+                    </span>
                   </div>
-                  <p className="text-sm mb-1">{w.reason}</p>
-                  <p className="text-xs text-gray-500">
-                    By {w.moderator} · {new Date(w.timestamp).toLocaleString()}
-                  </p>
+
+                  <h2 className="text-base font-semibold text-white">
+                    {warning.reason || "No reason provided"}
+                  </h2>
+
+                  <div className="mt-3 grid gap-2 text-sm text-white/50 sm:grid-cols-2">
+                    <div>
+                      <span className="text-white/30">
+                        Moderator
+                      </span>
+                      <br />
+                      <span className="text-white/70">
+                        {warning.moderator || "Unknown"}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-white/30">
+                        Date
+                      </span>
+                      <br />
+                      <span className="text-white/70">
+                        {warning.timestamp
+                          ? new Date(
+                              warning.timestamp
+                            ).toLocaleString()
+                          : "Unknown"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              ))}
+
+                {isAdmin && (
+                  <button
+                    onClick={() => removeWarning(warning.id)}
+                    disabled={loading}
+                    className="glass-button glass-button-danger"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
-          )}
-        </>
-      )}
+          ))
+        )}
+      </div>
     </div>
   );
 }
