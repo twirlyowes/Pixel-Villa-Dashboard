@@ -17,6 +17,43 @@ export default function ModerationPage() {
 
   const isAdmin = session?.user?.isAdmin === true;
 
+  async function waitForAction(actionId) {
+    const maxAttempts = 40;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      const response = await fetch(
+        `/api/moderation/action/status?actionId=${encodeURIComponent(actionId)}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || "Failed to check action status."
+        );
+      }
+
+      if (result.status === "completed") {
+        return result;
+      }
+
+      if (result.status === "failed") {
+        throw new Error(
+          result.error || "The moderation action failed."
+        );
+      }
+    }
+
+    throw new Error(
+      "The bot did not finish the action within the expected time. Check the dashboard audit logs."
+    );
+  }
+
   async function performAction() {
     setMessage("");
     setError("");
@@ -42,39 +79,62 @@ export default function ModerationPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/moderation/action", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action,
-          userId: userId.trim(),
-          reason: reason.trim(),
-          duration:
-            action === "mute"
-              ? duration
-              : undefined,
-        }),
-      });
+      const dashboardAction =
+        action === "mute"
+          ? "timeout"
+          : action === "unmute"
+            ? "remove-timeout"
+            : "warn";
+
+      const response = await fetch(
+        "/api/moderation/action",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: dashboardAction,
+            userId: userId.trim(),
+            reason: reason.trim(),
+            duration:
+              action === "mute"
+                ? duration
+                : undefined,
+          }),
+        }
+      );
 
       const result = await response.json();
 
       if (!response.ok) {
         throw new Error(
           result.error ||
-            "Failed to perform moderation action."
+            "Failed to submit moderation action."
         );
       }
 
+      if (!result.actionId) {
+        throw new Error(
+          "The moderation request was created without an action ID."
+        );
+      }
+
+      setMessage("Action submitted. Waiting for the bot...");
+
+      const completed = await waitForAction(
+        result.actionId
+      );
+
       setMessage(
-        result.message ||
-          `${action} action completed successfully.`
+        completed.result ||
+          `${action === "warn" ? "Warning" : action === "mute" ? "Mute" : "Unmute"} completed successfully.`
       );
 
       setUserId("");
       setReason("");
     } catch (err) {
+      setMessage("");
       setError(
         err.message ||
           "Something went wrong."
@@ -113,7 +173,6 @@ export default function ModerationPage() {
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header">
         <div>
           <div className="page-kicker">
@@ -135,7 +194,6 @@ export default function ModerationPage() {
         </div>
       </div>
 
-      {/* Access information */}
       <div
         className="glass-card"
         style={{ marginBottom: 20 }}
@@ -188,7 +246,6 @@ export default function ModerationPage() {
         </div>
       </div>
 
-      {/* Messages */}
       {error && (
         <div
           className="glass-card"
@@ -213,11 +270,11 @@ export default function ModerationPage() {
             color: "#86efac",
           }}
         >
-          ✅ {message}
+          {loading ? "⏳ " : "✅ "}
+          {message}
         </div>
       )}
 
-      {/* Action selector */}
       <div className="section-heading">
         <div>
           <h2>Moderation Action</h2>
@@ -244,7 +301,12 @@ export default function ModerationPage() {
         >
           <button
             type="button"
-            onClick={() => setAction("warn")}
+            onClick={() => {
+              setAction("warn");
+              setError("");
+              setMessage("");
+            }}
+            disabled={loading}
             className="glass-button"
             style={{
               border:
@@ -262,7 +324,12 @@ export default function ModerationPage() {
 
           <button
             type="button"
-            onClick={() => setAction("mute")}
+            onClick={() => {
+              setAction("mute");
+              setError("");
+              setMessage("");
+            }}
+            disabled={loading}
             className="glass-button"
             style={{
               border:
@@ -280,7 +347,12 @@ export default function ModerationPage() {
 
           <button
             type="button"
-            onClick={() => setAction("unmute")}
+            onClick={() => {
+              setAction("unmute");
+              setError("");
+              setMessage("");
+            }}
+            disabled={loading}
             className="glass-button"
             style={{
               border:
@@ -297,7 +369,6 @@ export default function ModerationPage() {
           </button>
         </div>
 
-        {/* User */}
         <div style={{ marginBottom: 18 }}>
           <label
             style={{
@@ -321,10 +392,10 @@ export default function ModerationPage() {
             }
             placeholder="Enter Discord User ID"
             className="dashboard-input"
+            disabled={loading}
           />
         </div>
 
-        {/* Duration */}
         {action === "mute" && (
           <div style={{ marginBottom: 18 }}>
             <label
@@ -344,6 +415,7 @@ export default function ModerationPage() {
                 setDuration(e.target.value)
               }
               className="dashboard-input"
+              disabled={loading}
             >
               <option value="1m">1 minute</option>
               <option value="5m">5 minutes</option>
@@ -358,7 +430,6 @@ export default function ModerationPage() {
           </div>
         )}
 
-        {/* Reason */}
         {action !== "unmute" && (
           <div style={{ marginBottom: 22 }}>
             <label
@@ -384,11 +455,11 @@ export default function ModerationPage() {
                 resize: "vertical",
                 minHeight: 100,
               }}
+              disabled={loading}
             />
           </div>
         )}
 
-        {/* Execute */}
         <button
           type="button"
           onClick={performAction}
@@ -400,7 +471,7 @@ export default function ModerationPage() {
           }}
         >
           {loading
-            ? "Processing..."
+            ? "⏳ Waiting for bot..."
             : action === "warn"
               ? "⚠️ Issue Warning"
               : action === "mute"
@@ -409,7 +480,6 @@ export default function ModerationPage() {
         </button>
       </div>
 
-      {/* Permission note */}
       <div className="glass-card">
         <h3 style={{ marginBottom: 8 }}>
           🔐 Permission & Audit
@@ -424,8 +494,8 @@ export default function ModerationPage() {
             fontSize: 14,
           }}
         >
-          Every dashboard moderation action will
-          be verified against your dashboard
+          Every dashboard moderation action is
+          verified against your dashboard
           permissions and recorded in the Pixel
           Villa audit log.
         </p>
