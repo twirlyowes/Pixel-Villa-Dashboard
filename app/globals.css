@@ -376,25 +376,26 @@ select:focus-visible {
     color: var(--pv-text-muted);
   }
 
+  
   /* ==========================================================
-     Dashboard link cards (overview grid)
-     ========================================================== */
+   Dashboard link cards (overview grid)
+   ========================================================== */
 
-  .dashboard-grid {
-    @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3;
-  }
+.dashboard-grid {
+  @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3;
+}
 
-  .dashboard-card {
-    @apply group relative flex min-h-[140px] flex-col justify-between overflow-hidden rounded-2xl border p-5 transition-all duration-200;
-    background: var(--pv-card);
-    border-color: var(--pv-border);
-  }
+.dashboard-card {
+  @apply relative flex min-h-[140px] flex-col justify-between overflow-hidden rounded-2xl border p-5 transition-all duration-200;
+  background: var(--pv-card);
+  border-color: var(--pv-border);
+}
 
-  .dashboard-card:hover {
-    border-color: var(--pv-border-hover);
-    background: var(--pv-card-hover);
-    transform: translateY(-2px);
-  }
+.dashboard-card:hover {
+  border-color: var(--pv-border-hover);
+  background: var(--pv-card-hover);
+  transform: translateY(-2px);
+}
 
   .dashboard-card-icon {
     @apply flex h-11 w-11 items-center justify-center rounded-xl border text-xl;
