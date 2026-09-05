@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { db } from "@/lib/firebaseAdmin";
-import {
-  sendDiscordChannelMessage,
-} from "@/lib/discord";
+import { sendDiscordChannelMessage } from "@/lib/discord";
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +24,48 @@ function serializeWarnings(warnings) {
   }));
 }
 
+function getSessionUser(session) {
+  return {
+    userId: session?.user?.discordId,
+    isAdmin: session?.user?.isAdmin === true,
+    role: session?.user?.role || "staff",
+  };
+}
+
+async function writeAuditLog({
+  session,
+  action,
+  targetUserId,
+  reason,
+  success,
+  status,
+  error,
+  warningId,
+}) {
+  try {
+    await db.collection("dashboardAuditLogs").add({
+      actor: session?.user?.discordId || "Unknown",
+      actorUserId: session?.user?.discordId || "Unknown",
+      actorUsername: session?.user?.username || "Unknown",
+      action,
+      targetUserId: targetUserId || null,
+      warningId: warningId || null,
+      reason: reason || null,
+      success: success === true,
+      status: status || null,
+      error: error || null,
+      source: "dashboard",
+      createdAt: new Date(),
+      timestamp: Date.now(),
+    });
+  } catch (auditError) {
+    console.error("WARNING AUDIT LOG ERROR:", auditError);
+  }
+}
+
 export async function GET(request) {
   try {
-    const session =
-      await getServerSession(authOptions);
+    const session = await getServerSession(authOptions);
 
     if (!session) {
       return NextResponse.json(
@@ -38,17 +74,13 @@ export async function GET(request) {
       );
     }
 
-    const { searchParams } =
-      new URL(request.url);
+    const { userId: sessionUserId, isAdmin } =
+      getSessionUser(session);
+
+    const { searchParams } = new URL(request.url);
 
     const requestedUserId =
       searchParams.get("userId")?.trim();
-
-    const sessionUserId =
-      session.user?.discordId;
-
-    const isAdmin =
-      session.user?.isAdmin === true;
 
     const userId =
       requestedUserId || sessionUserId;
@@ -64,6 +96,15 @@ export async function GET(request) {
     }
 
     if (!isAdmin && userId !== sessionUserId) {
+      await writeAuditLog({
+        session,
+        action: "view-warnings",
+        targetUserId: userId,
+        success: false,
+        status: "forbidden",
+        error: "User attempted to view another user's warnings.",
+      });
+
       return NextResponse.json(
         { error: "Forbidden" },
         { status: 403 }
@@ -84,10 +125,9 @@ export async function GET(request) {
       });
     }
 
-    const data = doc.data();
-
-    const warnings =
-      serializeWarnings(data?.warnings);
+    const warnings = serializeWarnings(
+      doc.data()?.warnings
+    );
 
     return NextResponse.json({
       success: true,
@@ -96,15 +136,11 @@ export async function GET(request) {
       count: warnings.length,
     });
   } catch (error) {
-    console.error(
-      "WARNINGS GET ERROR:",
-      error
-    );
+    console.error("WARNINGS GET ERROR:", error);
 
     return NextResponse.json(
       {
-        error:
-          "Failed to load warnings.",
+        error: "Failed to load warnings.",
       },
       { status: 500 }
     );
@@ -113,8 +149,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session =
-      await getServerSession(authOptions);
+    const session = await getServerSession(authOptions);
 
     if (!session) {
       return NextResponse.json(
@@ -123,22 +158,34 @@ export async function POST(request) {
       );
     }
 
-    if (session.user?.isAdmin !== true) {
+    const { sessionUserId, isAdmin } = {
+      sessionUserId: session.user?.discordId,
+      isAdmin: session.user?.isAdmin === true,
+    };
+
+    if (!sessionUserId || !validDiscordId(sessionUserId)) {
       return NextResponse.json(
-        { error: "Forbidden" },
+        { error: "Invalid authenticated user." },
         { status: 403 }
       );
     }
 
     const body = await request.json();
 
-    const userId =
-      body?.userId?.trim();
-
-    const reason =
-      body?.reason?.trim();
+    const userId = body?.userId?.trim();
+    const reason = body?.reason?.trim();
 
     if (!validDiscordId(userId)) {
+      await writeAuditLog({
+        session,
+        action: "issue-warning",
+        targetUserId: userId,
+        reason,
+        success: false,
+        status: "invalid",
+        error: "Invalid Discord User ID.",
+      });
+
       return NextResponse.json(
         {
           error:
@@ -149,31 +196,47 @@ export async function POST(request) {
     }
 
     if (!reason) {
+      await writeAuditLog({
+        session,
+        action: "issue-warning",
+        targetUserId: userId,
+        success: false,
+        status: "invalid",
+        error: "Warning reason is required.",
+      });
+
       return NextResponse.json(
         {
-          error:
-            "Warning reason is required.",
+          error: "Warning reason is required.",
         },
         { status: 400 }
       );
     }
 
     if (reason.length > 1000) {
+      await writeAuditLog({
+        session,
+        action: "issue-warning",
+        targetUserId: userId,
+        reason,
+        success: false,
+        status: "invalid",
+        error: "Warning reason is too long.",
+      });
+
       return NextResponse.json(
         {
-          error:
-            "Warning reason is too long.",
+          error: "Warning reason is too long.",
         },
         { status: 400 }
       );
     }
 
     const warning = {
-      id: String(Date.now()),
-      moderator:
-        session.user?.discordId ||
-        session.user?.username ||
-        "Unknown",
+      id: `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+      moderator: sessionUserId,
       reason,
       timestamp: new Date().toISOString(),
     };
@@ -185,7 +248,9 @@ export async function POST(request) {
     const existing = await ref.get();
 
     const currentWarnings = existing.exists
-      ? existing.data()?.warnings || []
+      ? Array.isArray(existing.data()?.warnings)
+        ? existing.data().warnings
+        : []
       : [];
 
     const updatedWarnings = [
@@ -193,13 +258,11 @@ export async function POST(request) {
       warning,
     ];
 
-    // Save first. Discord logging should never
-    // prevent the warning from being recorded.
     await ref.set({
       warnings: updatedWarnings,
+      updatedAt: new Date(),
     });
 
-    // Send Discord log.
     const logResult =
       await sendDiscordChannelMessage(
         WARNING_LOG_CHANNEL_ID,
@@ -217,7 +280,7 @@ export async function POST(request) {
                 },
                 {
                   name: "Moderator",
-                  value: `<@${session.user?.discordId}>`,
+                  value: `<@${sessionUserId}>`,
                   inline: true,
                 },
                 {
@@ -231,31 +294,36 @@ export async function POST(request) {
                   inline: false,
                 },
               ],
-              timestamp:
-                warning.timestamp,
+              timestamp: warning.timestamp,
             },
           ],
         }
       );
 
+    await writeAuditLog({
+      session,
+      action: "issue-warning",
+      targetUserId: userId,
+      reason,
+      warningId: warning.id,
+      success: true,
+      status: "success",
+    });
+
     return NextResponse.json({
       success: true,
       warning,
-      warningCount:
-        updatedWarnings.length,
-      loggedToDiscord:
-        logResult.ok,
+      warnings: serializeWarnings(updatedWarnings),
+      warningCount: updatedWarnings.length,
+      loggedToDiscord: logResult?.ok === true,
+      actorIsAdmin: isAdmin,
     });
   } catch (error) {
-    console.error(
-      "WARNINGS POST ERROR:",
-      error
-    );
+    console.error("WARNINGS POST ERROR:", error);
 
     return NextResponse.json(
       {
-        error:
-          "Failed to create warning.",
+        error: "Failed to create warning.",
       },
       { status: 500 }
     );
@@ -264,8 +332,7 @@ export async function POST(request) {
 
 export async function DELETE(request) {
   try {
-    const session =
-      await getServerSession(authOptions);
+    const session = await getServerSession(authOptions);
 
     if (!session) {
       return NextResponse.json(
@@ -275,25 +342,59 @@ export async function DELETE(request) {
     }
 
     if (session.user?.isAdmin !== true) {
+      await writeAuditLog({
+        session,
+        action: "remove-warning",
+        success: false,
+        status: "forbidden",
+        error:
+          "Non-admin attempted to remove a warning.",
+      });
+
       return NextResponse.json(
         { error: "Forbidden" },
         { status: 403 }
       );
     }
 
-    const { searchParams } =
-      new URL(request.url);
+    let userId;
+    let warningId;
 
-    const userId =
-      searchParams.get("userId")?.trim();
+    const { searchParams } = new URL(request.url);
 
-    const warningId =
-      searchParams.get("warningId")?.trim();
+    userId =
+      searchParams.get("userId")?.trim() || "";
+
+    warningId =
+      searchParams.get("warningId")?.trim() || "";
+
+    if (!userId || !warningId) {
+      try {
+        const body = await request.json();
+
+        userId =
+          body?.userId?.trim() || userId;
+
+        warningId =
+          body?.warningId?.trim() || warningId;
+      } catch {}
+    }
 
     if (
       !validDiscordId(userId) ||
       !warningId
     ) {
+      await writeAuditLog({
+        session,
+        action: "remove-warning",
+        targetUserId: userId,
+        warningId,
+        success: false,
+        status: "invalid",
+        error:
+          "Valid userId and warningId are required.",
+      });
+
       return NextResponse.json(
         {
           error:
@@ -310,51 +411,84 @@ export async function DELETE(request) {
     const doc = await ref.get();
 
     if (!doc.exists) {
+      await writeAuditLog({
+        session,
+        action: "remove-warning",
+        targetUserId: userId,
+        warningId,
+        success: false,
+        status: "not-found",
+        error: "Warning record not found.",
+      });
+
       return NextResponse.json(
         {
-          error:
-            "Warning record not found.",
+          error: "Warning record not found.",
         },
         { status: 404 }
       );
     }
 
-    const warnings =
-      doc.data()?.warnings || [];
+    const warnings = Array.isArray(
+      doc.data()?.warnings
+    )
+      ? doc.data().warnings
+      : [];
 
-    const updatedWarnings =
-      warnings.filter(
-        (warning) =>
-          String(warning.id) !==
-          String(warningId)
-      );
+    const removedWarning = warnings.find(
+      (warning) =>
+        String(warning.id) === String(warningId)
+    );
 
-    if (
-      updatedWarnings.length ===
-      warnings.length
-    ) {
+    if (!removedWarning) {
+      await writeAuditLog({
+        session,
+        action: "remove-warning",
+        targetUserId: userId,
+        warningId,
+        success: false,
+        status: "not-found",
+        error: "Warning not found.",
+      });
+
       return NextResponse.json(
         {
-          error:
-            "Warning not found.",
+          error: "Warning not found.",
         },
         { status: 404 }
       );
     }
+
+    const updatedWarnings = warnings.filter(
+      (warning) =>
+        String(warning.id) !== String(warningId)
+    );
 
     if (updatedWarnings.length === 0) {
       await ref.delete();
     } else {
       await ref.set({
         warnings: updatedWarnings,
+        updatedAt: new Date(),
       });
     }
 
+    await writeAuditLog({
+      session,
+      action: "remove-warning",
+      targetUserId: userId,
+      warningId,
+      reason: removedWarning.reason || null,
+      success: true,
+      status: "success",
+    });
+
     return NextResponse.json({
       success: true,
+      userId,
       warningId,
-      remainingWarnings:
-        updatedWarnings.length,
+      warnings: serializeWarnings(updatedWarnings),
+      remainingWarnings: updatedWarnings.length,
     });
   } catch (error) {
     console.error(
@@ -364,8 +498,7 @@ export async function DELETE(request) {
 
     return NextResponse.json(
       {
-        error:
-          "Failed to remove warning.",
+        error: "Failed to remove warning.",
       },
       { status: 500 }
     );
