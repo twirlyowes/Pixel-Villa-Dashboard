@@ -347,7 +347,8 @@ export default function WarningsPage() {
                       <br />
 
                       <span className="text-white/70">
-                        {warning.moderator ||
+                        {warning.moderatorUsername ||
+                          warning.moderator ||
                           "Unknown"}
                       </span>
                     </div>

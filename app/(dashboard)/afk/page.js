@@ -257,7 +257,7 @@ export default function AfkPage() {
                     </div>
 
                     <h2 className="text-lg font-semibold text-white">
-                      Staff Member
+                      {user.username || "Staff Member"}
                     </h2>
 
                     <p className="mt-2 text-sm text-white/60 break-words">

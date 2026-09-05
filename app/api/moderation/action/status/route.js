@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { db } from "@/lib/firebaseAdmin";
+import { resolveUsername } from "@/lib/discordUsers";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,10 @@ export async function GET(request) {
 
       targetUserId:
         data?.targetUserId || null,
+
+      targetUsername: data?.targetUserId
+        ? await resolveUsername(data.targetUserId)
+        : null,
 
       result:
         data?.result || null,

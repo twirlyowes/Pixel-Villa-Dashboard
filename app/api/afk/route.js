@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { db } from "@/lib/firebaseAdmin";
+import { resolveUsername, resolveUsernames } from "@/lib/discordUsers";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,14 @@ export async function GET(req) {
 
           return STAFF_USER_IDS.includes(user.userId);
         });
+
+      const usernames = await resolveUsernames(
+        users.map((user) => user.userId)
+      );
+
+      for (const user of users) {
+        user.username = usernames[user.userId] || user.userId;
+      }
 
       users.sort((a, b) => {
         const aTime = a.since
@@ -134,6 +143,7 @@ export async function GET(req) {
         isAdmin,
         isAfk: false,
         userId,
+        username: await resolveUsername(userId),
         reason: null,
         since: null,
         users: [],
@@ -148,6 +158,7 @@ export async function GET(req) {
       isAdmin,
       isAfk: true,
       userId,
+      username: await resolveUsername(userId),
       reason: data.reason || "No reason provided.",
       since: serializeDate(data.time),
       users: [],

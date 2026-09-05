@@ -167,7 +167,7 @@ try {
         : action;
 
   const response = await fetch(
-    "/api/moderation/action",
+    "/api/moderation",
     {
       method: "POST",
       headers: {
@@ -210,7 +210,9 @@ try {
 
   setMessage(
     completed.result ||
-      `${selectedAction.label} completed successfully.`
+      `${selectedAction.label} completed for ${
+        completed.targetUsername || trimmedUserId
+      }.`
   );
 
   setUserId("");

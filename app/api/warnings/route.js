@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { db } from "@/lib/firebaseAdmin";
 import { sendDiscordChannelMessage } from "@/lib/discord";
+import { resolveUsername, resolveUsernames } from "@/lib/discordUsers";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,7 @@ export async function GET(request) {
       return NextResponse.json({
         success: true,
         userId,
+        username: await resolveUsername(userId),
         warnings: [],
         count: 0,
       });
@@ -129,10 +131,25 @@ export async function GET(request) {
       doc.data()?.warnings
     );
 
+    const moderatorUsernames = await resolveUsernames(
+      warnings.map((warning) => warning.moderator)
+    );
+
+    const warningsWithUsernames = warnings.map(
+      (warning) => ({
+        ...warning,
+        moderatorUsername:
+          moderatorUsernames[warning.moderator] ||
+          warning.moderator ||
+          null,
+      })
+    );
+
     return NextResponse.json({
       success: true,
       userId,
-      warnings,
+      username: await resolveUsername(userId),
+      warnings: warningsWithUsernames,
       count: warnings.length,
     });
   } catch (error) {

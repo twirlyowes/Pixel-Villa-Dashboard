@@ -7,7 +7,7 @@ const sections = [
 {
 title: "GENERAL",
 items: [
-{ name: "Overview", href: "/dashboard", icon: "⌂" },
+{ name: "Overview", href: "/", icon: "⌂" },
 ],
 },
 {
@@ -15,37 +15,26 @@ title: "MODERATION",
 items: [
 { name: "Moderation", href: "/moderation", icon: "🛡" },
 { name: "Warnings", href: "/warnings", icon: "⚠" },
-{ name: "Members", href: "/members", icon: "♙" },
 ],
 },
 {
 title: "STAFF",
 items: [
-{ name: "Active Time", href: "/active-time", icon: "◉" },
+{ name: "Staff Activity", href: "/staff-activity", icon: "📊" },
 { name: "AFK", href: "/afk", icon: "💤" },
-{ name: "Leaderboard", href: "/leaderboard", icon: "🏆" },
 ],
 },
 {
-title: "COMMUNITY",
+title: "SYSTEM",
 items: [
-{ name: "ModMail", href: "/modmail", icon: "✉" },
-{ name: "Announcements", href: "/announcements", icon: "📢" },
-],
-},
-{
-title: "BOT",
-items: [
-{ name: "Bot Status", href: "/bot", icon: "🤖" },
-{ name: "Analytics", href: "/analytics", icon: "📊" },
-{ name: "Logs", href: "/logs", icon: "▤" },
+{ name: "Bot Health", href: "/bot-health", icon: "🤖" },
+{ name: "Security", href: "/security", icon: "🔒" },
 ],
 },
 {
 title: "ADMIN",
 items: [
-{ name: "Administration", href: "/admin", icon: "♛" },
-{ name: "Settings", href: "/settings", icon: "⚙" },
+{ name: "HQC", href: "/hqc", icon: "✦" },
 ],
 },
 ];
@@ -58,7 +47,7 @@ return (
 <div className="flex h-full flex-col">
 {/* Brand */}
 <div className="border-b border-sky-300/10 px-6 py-6">
-<Link href="/dashboard" className="group flex items-center gap-3">
+<Link href="/" className="group flex items-center gap-3">
 <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-400/10 text-xl shadow-[0_0_25px_rgba(56,189,248,0.08)] transition group-hover:bg-sky-400/15">
 🩵
 </div>

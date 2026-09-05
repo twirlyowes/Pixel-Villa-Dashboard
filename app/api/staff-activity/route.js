@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/authOptions";
 import { db } from "@/lib/firebaseAdmin";
+import { resolveUsernames } from "@/lib/discordUsers";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +106,18 @@ export async function GET() {
           member.userId === sessionUserId
       );
     }
+
+    // Resolve live Discord usernames (falls back to
+    // whatever was already on the record if the lookup fails).
+    const usernames = await resolveUsernames(
+      staff.map((member) => member.userId)
+    );
+
+    staff = staff.map((member) => ({
+      ...member,
+      username:
+        usernames[member.userId] || member.username,
+    }));
 
     staff.sort(
       (a, b) =>

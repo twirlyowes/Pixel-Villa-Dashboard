@@ -44,28 +44,16 @@ const adminItems = [
     description: "Access administrator-only commands.",
   },
   {
-    href: "/member-management",
-    icon: "👥",
-    title: "Member Management",
-    description: "Advanced member management tools.",
-  },
-  {
-    href: "/afk/all",
+    href: "/afk",
     icon: "💤",
     title: "All AFK Users",
     description: "View everyone currently marked AFK.",
   },
   {
-    href: "/staff-activity/all",
+    href: "/staff-activity",
     icon: "📈",
     title: "Staff Activity",
     description: "View activity from the entire staff team.",
-  },
-  {
-    href: "/audit-logs",
-    icon: "📋",
-    title: "Audit Logs",
-    description: "View every dashboard action.",
   },
 ];
 
@@ -189,7 +177,7 @@ export default function DashboardPage() {
       <header className="sticky top-0 z-50 border-b border-sky-300/10 bg-[#06131f]/85 backdrop-blur-2xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
           <Link
-            href="/dashboard"
+            href="/"
             className="flex items-center gap-3"
           >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300/15 bg-sky-400/10">
