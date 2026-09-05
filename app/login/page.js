@@ -82,11 +82,7 @@ export default function LoginPage() {
       const result = await signIn("credentials", {
         redirect: false,
         userId: id,
-
-        // Staff code
         accessCode: accessCode.trim(),
-
-        // Admin one-time code
         adminCode: adminCode.trim(),
       });
 
@@ -96,7 +92,7 @@ export default function LoginPage() {
         );
       }
 
-      window.location.href = "/dashboard";
+      window.location.href = "/";
     } catch (err) {
       setError(
         err.message || "Unable to log in."
@@ -109,7 +105,6 @@ export default function LoginPage() {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#06131f] px-4 py-8 text-sky-50">
 
-      {/* Background glow */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-[-220px] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-sky-400/10 blur-[120px]" />
         <div className="absolute bottom-[-250px] right-[-120px] h-[500px] w-[500px] rounded-full bg-sky-500/10 blur-[120px]" />
@@ -118,7 +113,6 @@ export default function LoginPage() {
       <section className="relative w-full max-w-md">
         <div className="rounded-3xl border border-sky-300/15 bg-[#0b1f2d]/80 p-6 shadow-2xl shadow-sky-950/30 backdrop-blur-2xl sm:p-8">
 
-          {/* Header */}
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-sky-300/20 bg-sky-400/10 text-3xl">
               🩵
@@ -135,7 +129,6 @@ export default function LoginPage() {
 
           <form onSubmit={login} className="space-y-5">
 
-            {/* Discord ID */}
             <div>
               <label className="mb-2 block text-sm font-medium">
                 Discord User ID
@@ -153,7 +146,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* STAFF ACCESS CODE — ALWAYS VISIBLE */}
             <div>
               <label className="mb-2 block text-sm font-medium">
                 🛡️ Staff Access Code
@@ -174,16 +166,16 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Divider */}
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-sky-300/10" />
+
               <span className="text-xs text-slate-500">
                 OR ADMIN LOGIN
               </span>
+
               <div className="h-px flex-1 bg-sky-300/10" />
             </div>
 
-            {/* ADMIN CODE */}
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <label className="text-sm font-medium">
@@ -221,7 +213,6 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Messages */}
             {message && (
               <div className="rounded-xl border border-sky-300/15 bg-sky-400/5 p-3 text-sm text-sky-200">
                 {message}
@@ -234,7 +225,6 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Login */}
             <button
               type="submit"
               disabled={loading}
