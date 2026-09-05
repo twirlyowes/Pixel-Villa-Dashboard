@@ -29,19 +29,29 @@ export default function WarningsPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data?.error || "Failed to load warnings");
+        throw new Error(
+          data?.error || "Failed to load warnings"
+        );
       }
 
-      setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setWarnings(
+        Array.isArray(data.warnings)
+          ? data.warnings
+          : []
+      );
 
       setMessage(
         data.count === 0
           ? "No warnings found."
-          : `${data.count} warning${data.count === 1 ? "" : "s"} found.`
+          : `${data.count} warning${
+              data.count === 1 ? "" : "s"
+            } found.`
       );
     } catch (error) {
       setWarnings([]);
-      setMessage(error.message || "Failed to load warnings.");
+      setMessage(
+        error.message || "Failed to load warnings."
+      );
     } finally {
       setLoading(false);
     }
@@ -50,26 +60,31 @@ export default function WarningsPage() {
   useEffect(() => {
     if (status !== "authenticated") return;
 
-    loadWarnings();
-  }, [status]);
+    const ownUserId =
+      session?.user?.discordId || "";
 
-  useEffect(() => {
-    if (status !== "authenticated") return;
-
-    if (!isAdmin && session?.user?.discordId) {
-      setUserId(session.user.discordId);
+    if (!isAdmin && ownUserId) {
+      setUserId(ownUserId);
+      loadWarnings(ownUserId);
+      return;
     }
+
+    loadWarnings();
   }, [status, isAdmin, session]);
 
   async function addWarning() {
-    const reason = window.prompt("Enter the warning reason:");
+    const targetUserId = userId.trim();
 
-    if (!reason?.trim()) return;
-
-    if (!userId.trim()) {
+    if (!targetUserId) {
       setMessage("Enter a Discord User ID first.");
       return;
     }
+
+    const reason = window.prompt(
+      "Enter the warning reason:"
+    );
+
+    if (!reason?.trim()) return;
 
     setLoading(true);
     setMessage("");
@@ -81,7 +96,7 @@ export default function WarningsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: userId.trim(),
+          userId: targetUserId,
           reason: reason.trim(),
         }),
       });
@@ -89,11 +104,15 @@ export default function WarningsPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data?.error || "Failed to add warning");
+        throw new Error(
+          data?.error || "Failed to add warning"
+        );
       }
 
       setWarnings(
-        Array.isArray(data.warnings) ? data.warnings : []
+        Array.isArray(data.warnings)
+          ? data.warnings
+          : []
       );
 
       if (data.loggedToDiscord === false) {
@@ -101,17 +120,23 @@ export default function WarningsPage() {
           "Warning added, but the Discord log could not be sent."
         );
       } else {
-        setMessage("Warning added successfully and logged to Discord.");
+        setMessage(
+          "Warning added successfully and logged to Discord."
+        );
       }
     } catch (error) {
-      setMessage(error.message || "Failed to add warning.");
+      setMessage(
+        error.message || "Failed to add warning."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   async function removeWarning(warningId) {
-    if (!userId.trim()) {
+    const targetUserId = userId.trim();
+
+    if (!targetUserId) {
       setMessage("Enter a Discord User ID first.");
       return;
     }
@@ -132,8 +157,8 @@ export default function WarningsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: userId.trim(),
-          warningId,
+          userId: targetUserId,
+          warningId: String(warningId),
         }),
       });
 
@@ -146,13 +171,18 @@ export default function WarningsPage() {
       }
 
       setWarnings(
-        Array.isArray(data.warnings) ? data.warnings : []
+        Array.isArray(data.warnings)
+          ? data.warnings
+          : []
       );
 
-      setMessage("Warning removed successfully.");
+      setMessage(
+        "Warning removed successfully."
+      );
     } catch (error) {
       setMessage(
-        error.message || "Failed to remove warning."
+        error.message ||
+          "Failed to remove warning."
       );
     } finally {
       setLoading(false);
@@ -163,7 +193,25 @@ export default function WarningsPage() {
     return (
       <div className="glass-page">
         <div className="glass-card">
-          <p className="text-white/60">Loading...</p>
+          <p className="text-white/60">
+            Loading...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status !== "authenticated") {
+    return (
+      <div className="glass-page">
+        <div className="glass-card">
+          <h1 className="text-lg font-semibold text-white">
+            Unauthorized
+          </h1>
+
+          <p className="mt-2 text-sm text-white/50">
+            Please log in to access warnings.
+          </p>
         </div>
       </div>
     );
@@ -173,14 +221,16 @@ export default function WarningsPage() {
     <div className="glass-page">
       <div className="page-header">
         <div>
-          <p className="page-eyebrow">MODERATION</p>
+          <p className="page-eyebrow">
+            MODERATION
+          </p>
 
           <h1 className="page-title">
             Warnings
           </h1>
 
           <p className="page-description">
-            View and manage staff warnings.
+            View and manage recorded warnings.
           </p>
         </div>
 
@@ -204,7 +254,9 @@ export default function WarningsPage() {
 
             <input
               value={userId}
-              onChange={(e) => setUserId(e.target.value)}
+              onChange={(e) =>
+                setUserId(e.target.value)
+              }
               placeholder={
                 isAdmin
                   ? "Enter a Discord User ID"
@@ -216,22 +268,28 @@ export default function WarningsPage() {
           </div>
 
           <button
-            onClick={() => loadWarnings(userId.trim())}
-            disabled={loading}
+            onClick={() =>
+              loadWarnings(userId.trim())
+            }
+            disabled={
+              loading || !userId.trim()
+            }
             className="glass-button"
           >
-            {loading ? "Loading..." : "Search"}
+            {loading
+              ? "Loading..."
+              : "Search"}
           </button>
 
-          {isAdmin && (
-            <button
-              onClick={addWarning}
-              disabled={loading}
-              className="glass-button glass-button-primary"
-            >
-              + Add Warning
-            </button>
-          )}
+          <button
+            onClick={addWarning}
+            disabled={
+              loading || !userId.trim()
+            }
+            className="glass-button glass-button-primary"
+          >
+            + Add Warning
+          </button>
         </div>
 
         {message && (
@@ -253,7 +311,8 @@ export default function WarningsPage() {
             </h2>
 
             <p className="mt-1 text-sm text-white/50">
-              This user currently has no recorded warnings.
+              This user currently has no recorded
+              warnings.
             </p>
           </div>
         ) : (
@@ -274,8 +333,9 @@ export default function WarningsPage() {
                     </span>
                   </div>
 
-                  <h2 className="text-base font-semibold text-white">
-                    {warning.reason || "No reason provided"}
+                  <h2 className="text-base font-semibold text-white break-words">
+                    {warning.reason ||
+                      "No reason provided"}
                   </h2>
 
                   <div className="mt-3 grid gap-2 text-sm text-white/50 sm:grid-cols-2">
@@ -287,7 +347,8 @@ export default function WarningsPage() {
                       <br />
 
                       <span className="text-white/70">
-                        {warning.moderator || "Unknown"}
+                        {warning.moderator ||
+                          "Unknown"}
                       </span>
                     </div>
 
@@ -312,12 +373,16 @@ export default function WarningsPage() {
                 {isAdmin && (
                   <button
                     onClick={() =>
-                      removeWarning(warning.id)
+                      removeWarning(
+                        warning.id
+                      )
                     }
                     disabled={loading}
                     className="glass-button glass-button-danger"
                   >
-                    Remove
+                    {loading
+                      ? "Removing..."
+                      : "Remove"}
                   </button>
                 )}
               </div>
