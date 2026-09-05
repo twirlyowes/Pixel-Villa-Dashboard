@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 function formatDate(date) {
@@ -24,11 +24,7 @@ function formatDuration(date) {
     return "Unknown";
   }
 
-  const diff = Math.max(
-    0,
-    Date.now() - start
-  );
-
+  const diff = Math.max(0, Date.now() - start);
   const minutes = Math.floor(diff / 60000);
 
   if (minutes < 1) {
@@ -59,10 +55,13 @@ export default function AfkPage() {
   const [users, setUsers] = useState([]);
   const [myStatus, setMyStatus] = useState(null);
   const [message, setMessage] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const isAdmin = session?.user?.isAdmin === true;
 
-  async function loadAfk() {
+  const loadAfk = useCallback(async () => {
+    if (status !== "authenticated") return;
+
     setLoading(true);
     setMessage("");
 
@@ -79,12 +78,14 @@ export default function AfkPage() {
         );
       }
 
-      if (isAdmin) {
+      if (data.isAdmin === true) {
         setUsers(
           Array.isArray(data.users)
             ? data.users
             : []
         );
+
+        setMyStatus(null);
       } else {
         setMyStatus(
           data.isAfk
@@ -95,7 +96,11 @@ export default function AfkPage() {
               }
             : null
         );
+
+        setUsers([]);
       }
+
+      setLastUpdated(new Date());
     } catch (error) {
       setUsers([]);
       setMyStatus(null);
@@ -106,7 +111,7 @@ export default function AfkPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -118,7 +123,19 @@ export default function AfkPage() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [status, isAdmin]);
+  }, [status, loadAfk]);
+
+  useEffect(() => {
+    if (!myStatus?.since) return;
+
+    const interval = setInterval(() => {
+      setMyStatus((current) =>
+        current ? { ...current } : current
+      );
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [myStatus?.since]);
 
   if (status === "loading" || loading) {
     return (
@@ -126,6 +143,22 @@ export default function AfkPage() {
         <div className="glass-card">
           <p className="text-white/60">
             Loading AFK status...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status !== "authenticated") {
+    return (
+      <div className="glass-page">
+        <div className="glass-card text-center">
+          <h2 className="text-lg font-semibold text-white">
+            Unauthorized
+          </h2>
+
+          <p className="mt-2 text-sm text-white/50">
+            Please log in to view AFK status.
           </p>
         </div>
       </div>
@@ -149,19 +182,36 @@ export default function AfkPage() {
               ? "View staff members who are currently AFK."
               : "View your current AFK status."}
           </p>
+
+          {lastUpdated && (
+            <p className="mt-2 text-xs text-white/30">
+              Last updated{" "}
+              {lastUpdated.toLocaleTimeString()}
+            </p>
+          )}
         </div>
 
-        {isAdmin && (
-          <div className="stat-card">
-            <span className="stat-label">
-              CURRENTLY AFK
-            </span>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <div className="stat-card">
+              <span className="stat-label">
+                CURRENTLY AFK
+              </span>
 
-            <span className="stat-value">
-              {users.length}
-            </span>
-          </div>
-        )}
+              <span className="stat-value">
+                {users.length}
+              </span>
+            </div>
+          )}
+
+          <button
+            onClick={loadAfk}
+            disabled={loading}
+            className="glass-button"
+          >
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {message && (
@@ -195,13 +245,13 @@ export default function AfkPage() {
                 className="glass-card"
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div>
+                  <div className="min-w-0">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className="rounded-lg border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-medium text-yellow-300">
                         AFK
                       </span>
 
-                      <span className="text-xs text-white/40">
+                      <span className="text-xs text-white/40 break-all">
                         {user.userId}
                       </span>
                     </div>
@@ -210,13 +260,13 @@ export default function AfkPage() {
                       Staff Member
                     </h2>
 
-                    <p className="mt-2 text-sm text-white/60">
+                    <p className="mt-2 text-sm text-white/60 break-words">
                       {user.reason ||
                         "No reason provided."}
                     </p>
                   </div>
 
-                  <div className="text-left md:text-right">
+                  <div className="shrink-0 text-left md:text-right">
                     <p className="text-xs uppercase tracking-wider text-white/30">
                       Since
                     </p>
@@ -238,12 +288,12 @@ export default function AfkPage() {
         <div className="glass-card">
           {myStatus ? (
             <>
-              <div className="mb-3 flex items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="rounded-lg border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs font-medium text-yellow-300">
                   AFK
                 </span>
 
-                <span className="text-xs text-white/40">
+                <span className="text-xs text-white/40 break-all">
                   {myStatus.userId}
                 </span>
               </div>
@@ -274,7 +324,9 @@ export default function AfkPage() {
                   </p>
 
                   <p className="mt-1 text-sm text-white/70">
-                    {formatDuration(myStatus.since)}
+                    {formatDuration(
+                      myStatus.since
+                    )}
                   </p>
                 </div>
               </div>
