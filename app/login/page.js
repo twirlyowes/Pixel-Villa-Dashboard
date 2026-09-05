@@ -6,27 +6,28 @@ import { signIn } from "next-auth/react";
 export default function LoginPage() {
   const [userId, setUserId] = useState("");
   const [accessCode, setAccessCode] = useState("");
+  const [adminCode, setAdminCode] = useState("");
 
-  const [loginMethod, setLoginMethod] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [requestingCode, setRequestingCode] = useState(false);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  async function checkUser() {
+  async function requestAdminCode() {
     const id = userId.trim();
 
     if (!/^\d{15,25}$/.test(id)) {
-      setError("Enter a valid Discord User ID.");
+      setError("Enter a valid Discord User ID first.");
       return;
     }
 
-    setLoading(true);
+    setRequestingCode(true);
     setError("");
     setMessage("");
 
     try {
-      const response = await fetch("/api/auth/login-method", {
+      const response = await fetch("/api/auth/request-code", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -38,99 +39,60 @@ export default function LoginPage() {
 
       const data = await response.json();
 
-      if (!response.ok || !data.authorized) {
+      if (!response.ok) {
         throw new Error(
-          data.error ||
-            "This Discord account is not authorized."
+          data.error || "Unable to send administrator login code."
         );
       }
 
-      setLoginMethod(data.method);
-
-      if (data.method === "admin") {
-        setLoading(true);
-
-        const codeResponse = await fetch(
-          "/api/auth/request-code",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              userId: id,
-            }),
-          }
-        );
-
-        const codeData = await codeResponse.json();
-
-        if (!codeResponse.ok) {
-          throw new Error(
-            codeData.error ||
-              "Unable to send the administrator login code."
-          );
-        }
-
-        setMessage(
-          "Your administrator login code was sent to your Discord DMs."
-        );
-      } else {
-        setMessage(
-          "Enter the dashboard access code provided to staff."
-        );
-      }
+      setMessage(
+        "Administrator code requested. Check your Discord DMs."
+      );
     } catch (err) {
-      setLoginMethod(null);
       setError(
-        err.message ||
-          "Unable to determine your login method."
+        err.message || "Unable to request administrator code."
       );
     } finally {
-      setLoading(false);
+      setRequestingCode(false);
     }
   }
 
   async function login(event) {
     event.preventDefault();
 
-    setError("");
-    setMessage("");
-
     const id = userId.trim();
-    const code = accessCode.trim();
 
-    if (!code) {
+    if (!/^\d{15,25}$/.test(id)) {
+      setError("Enter a valid Discord User ID.");
+      return;
+    }
+
+    if (!accessCode && !adminCode) {
       setError(
-        loginMethod === "admin"
-          ? "Enter the 6-digit code from your Discord DM."
-          : "Enter the dashboard access code."
+        "Enter either your staff access code or administrator DM code."
       );
       return;
     }
 
-    if (
-      loginMethod === "admin" &&
-      !/^\d{6}$/.test(code)
-    ) {
-      setError("The administrator code must be 6 digits.");
-      return;
-    }
-
     setLoading(true);
+    setError("");
+    setMessage("");
 
     try {
       const result = await signIn("credentials", {
         redirect: false,
         userId: id,
-        accessCode: code,
+
+        // Staff code
+        accessCode: accessCode.trim(),
+
+        // Admin one-time code
+        adminCode: adminCode.trim(),
       });
 
       if (!result || result.error) {
         throw new Error(
-          loginMethod === "admin"
-            ? "Invalid or expired administrator code."
-            : "Invalid dashboard access code."
+          "Invalid Discord ID or login code."
         );
       }
 
@@ -144,30 +106,19 @@ export default function LoginPage() {
     }
   }
 
-  function reset() {
-    setUserId("");
-    setAccessCode("");
-    setLoginMethod(null);
-    setError("");
-    setMessage("");
-  }
-
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#06131f] px-4 py-8 text-sky-50">
 
-      <div
-        className="pointer-events-none absolute inset-0"
-        aria-hidden="true"
-      >
+      {/* Background glow */}
+      <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-[-220px] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-sky-400/10 blur-[120px]" />
-
         <div className="absolute bottom-[-250px] right-[-120px] h-[500px] w-[500px] rounded-full bg-sky-500/10 blur-[120px]" />
       </div>
 
       <section className="relative w-full max-w-md">
         <div className="rounded-3xl border border-sky-300/15 bg-[#0b1f2d]/80 p-6 shadow-2xl shadow-sky-950/30 backdrop-blur-2xl sm:p-8">
 
-          {/* Brand */}
+          {/* Header */}
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-sky-300/20 bg-sky-400/10 text-3xl">
               🩵
@@ -182,198 +133,124 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* USER ID */}
-          {!loginMethod && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                checkUser();
-              }}
-              className="space-y-5"
-            >
-              <div>
-                <label
-                  htmlFor="user-id"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Discord User ID
+          <form onSubmit={login} className="space-y-5">
+
+            {/* Discord ID */}
+            <div>
+              <label className="mb-2 block text-sm font-medium">
+                Discord User ID
+              </label>
+
+              <input
+                type="text"
+                inputMode="numeric"
+                value={userId}
+                onChange={(e) =>
+                  setUserId(e.target.value.replace(/\D/g, ""))
+                }
+                placeholder="Enter your Discord User ID"
+                className="w-full rounded-xl border border-sky-300/10 bg-[#06131f]/80 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400/50"
+              />
+            </div>
+
+            {/* STAFF ACCESS CODE — ALWAYS VISIBLE */}
+            <div>
+              <label className="mb-2 block text-sm font-medium">
+                🛡️ Staff Access Code
+              </label>
+
+              <input
+                type="password"
+                value={accessCode}
+                onChange={(e) =>
+                  setAccessCode(e.target.value)
+                }
+                placeholder="Enter dashboard access code"
+                className="w-full rounded-xl border border-sky-300/10 bg-[#06131f]/80 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400/50"
+              />
+
+              <p className="mt-2 text-xs text-slate-500">
+                For authorized Pixel Villa staff.
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-sky-300/10" />
+              <span className="text-xs text-slate-500">
+                OR ADMIN LOGIN
+              </span>
+              <div className="h-px flex-1 bg-sky-300/10" />
+            </div>
+
+            {/* ADMIN CODE */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-sm font-medium">
+                  👑 Administrator DM Code
                 </label>
 
-                <input
-                  id="user-id"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  value={userId}
-                  onChange={(event) =>
-                    setUserId(
-                      event.target.value.replace(/\D/g, "")
-                    )
-                  }
-                  placeholder="Enter your Discord User ID"
-                  className="w-full rounded-xl border border-sky-300/10 bg-[#06131f]/80 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/10"
-                />
-              </div>
-
-              {error && (
-                <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-sky-400 px-4 py-3 font-bold text-[#03111b] transition hover:bg-sky-300 disabled:opacity-50"
-              >
-                {loading ? "Checking..." : "Continue"}
-              </button>
-            </form>
-          )}
-
-          {/* ADMIN */}
-          {loginMethod === "admin" && (
-            <form
-              onSubmit={login}
-              className="space-y-5"
-            >
-              <div className="rounded-xl border border-sky-300/10 bg-sky-400/5 p-4">
-                <p className="font-semibold text-sky-200">
-                  👑 Administrator Login
-                </p>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  A one-time code was sent to your Discord DMs.
-                </p>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="admin-code"
-                  className="mb-2 block text-sm font-medium"
+                <button
+                  type="button"
+                  onClick={requestAdminCode}
+                  disabled={requestingCode}
+                  className="text-xs font-semibold text-sky-300 hover:text-sky-200 disabled:opacity-50"
                 >
-                  Discord Login Code
-                </label>
-
-                <input
-                  id="admin-code"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={accessCode}
-                  onChange={(event) =>
-                    setAccessCode(
-                      event.target.value.replace(/\D/g, "")
-                    )
-                  }
-                  placeholder="000000"
-                  className="w-full rounded-xl border border-sky-300/10 bg-[#06131f]/80 px-4 py-4 text-center text-2xl font-bold tracking-[0.5em] text-white outline-none focus:border-sky-400/50"
-                />
+                  {requestingCode
+                    ? "Sending..."
+                    : "Send Code"}
+                </button>
               </div>
 
-              {message && (
-                <div className="rounded-xl border border-sky-300/15 bg-sky-400/5 p-3 text-sm text-sky-200">
-                  {message}
-                </div>
-              )}
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={adminCode}
+                onChange={(e) =>
+                  setAdminCode(
+                    e.target.value.replace(/\D/g, "")
+                  )
+                }
+                placeholder="000000"
+                className="w-full rounded-xl border border-sky-300/10 bg-[#06131f]/80 px-4 py-3 text-center text-lg font-bold tracking-[0.35em] text-white outline-none placeholder:text-slate-600 focus:border-sky-400/50"
+              />
 
-              {error && (
-                <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-300">
-                  {error}
-                </div>
-              )}
+              <p className="mt-2 text-xs text-slate-500">
+                Administrators can request a one-time login code.
+              </p>
+            </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-sky-400 px-4 py-3 font-bold text-[#03111b] hover:bg-sky-300 disabled:opacity-50"
-              >
-                {loading ? "Verifying..." : "Verify & Login"}
-              </button>
+            {/* Messages */}
+            {message && (
+              <div className="rounded-xl border border-sky-300/15 bg-sky-400/5 p-3 text-sm text-sky-200">
+                {message}
+              </div>
+            )}
 
-              <button
-                type="button"
-                onClick={reset}
-                className="w-full text-sm text-slate-500 hover:text-sky-300"
-              >
-                Use a different Discord ID
-              </button>
-            </form>
-          )}
+            {error && (
+              <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-300">
+                {error}
+              </div>
+            )}
 
-          {/* STAFF */}
-          {loginMethod === "staff" && (
-            <form
-              onSubmit={login}
-              className="space-y-5"
+            {/* Login */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-sky-400 px-4 py-3 font-bold text-[#03111b] transition hover:bg-sky-300 disabled:opacity-50"
             >
-              <div className="rounded-xl border border-sky-300/10 bg-sky-400/5 p-4">
-                <p className="font-semibold text-sky-200">
-                  🛡️ Staff Login
-                </p>
+              {loading ? "Logging in..." : "Login to Dashboard"}
+            </button>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  Enter the shared dashboard access code.
-                </p>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="staff-code"
-                  className="mb-2 block text-sm font-medium"
-                >
-                  Dashboard Access Code
-                </label>
-
-                <input
-                  id="staff-code"
-                  type="password"
-                  autoComplete="current-password"
-                  value={accessCode}
-                  onChange={(event) =>
-                    setAccessCode(event.target.value)
-                  }
-                  placeholder="Enter access code"
-                  className="w-full rounded-xl border border-sky-300/10 bg-[#06131f]/80 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/10"
-                />
-              </div>
-
-              {message && (
-                <div className="rounded-xl border border-sky-300/15 bg-sky-400/5 p-3 text-sm text-sky-200">
-                  {message}
-                </div>
-              )}
-
-              {error && (
-                <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-300">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-sky-400 px-4 py-3 font-bold text-[#03111b] hover:bg-sky-300 disabled:opacity-50"
-              >
-                {loading ? "Logging in..." : "Login to Dashboard"}
-              </button>
-
-              <button
-                type="button"
-                onClick={reset}
-                className="w-full text-sm text-slate-500 hover:text-sky-300"
-              >
-                Use a different Discord ID
-              </button>
-            </form>
-          )}
+          </form>
 
           <div className="mt-8 border-t border-sky-300/10 pt-5 text-center">
             <p className="text-[11px] uppercase tracking-[0.18em] text-sky-300/30">
               Pixel Villa • Secure Dashboard
             </p>
           </div>
+
         </div>
       </section>
     </main>
